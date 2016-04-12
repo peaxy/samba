@@ -2851,9 +2851,10 @@ retry:
  anonymous:
 
 	/* Finally fall back to anonymous. */
-	if (lp_winbind_sealed_pipes() || lp_require_strong_key()) {
+	if ((lp_winbind_sealed_pipes() || lp_require_strong_key()) &&
+	    (IS_DC || domain->primary)) {
 		status = NT_STATUS_DOWNGRADE_DETECTED;
-		DEBUG(1, ("Unwilling to make SAMR connection to domain %s"
+		DEBUG(1, ("Unwilling to make SAMR connection to domain %s "
 			  "without connection level security, "
 			  "must set 'winbind sealed pipes = false' and "
 			  "'require strong key = false' to proceed: %s\n",
@@ -3150,9 +3151,10 @@ retry:
 
  anonymous:
 
-	if (lp_winbind_sealed_pipes() || lp_require_strong_key()) {
+	if ((lp_winbind_sealed_pipes() || lp_require_strong_key()) &&
+	    (IS_DC || domain->primary)) {
 		result = NT_STATUS_DOWNGRADE_DETECTED;
-		DEBUG(1, ("Unwilling to make LSA connection to domain %s"
+		DEBUG(1, ("Unwilling to make LSA connection to domain %s "
 			  "without connection level security, "
 			  "must set 'winbind sealed pipes = false' and "
 			  "'require strong key = false' to proceed: %s\n",
@@ -3326,9 +3328,10 @@ static NTSTATUS cm_connect_netlogon_transport(struct winbindd_domain *domain,
 
  no_schannel:
 	if (!(conn->netlogon_flags & NETLOGON_NEG_AUTHENTICATED_RPC)) {
-		if (lp_winbind_sealed_pipes() || lp_require_strong_key()) {
+		if ((lp_winbind_sealed_pipes() || lp_require_strong_key()) &&
+		    (IS_DC || domain->primary)) {
 			result = NT_STATUS_DOWNGRADE_DETECTED;
-			DEBUG(1, ("Unwilling to make connection to domain %s"
+			DEBUG(1, ("Unwilling to make connection to domain %s "
 				  "without connection level security, "
 				  "must set 'winbind sealed pipes = false' and "
 				  "'require strong key = false' to proceed: %s\n",
