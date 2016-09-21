@@ -657,6 +657,21 @@ ctdb_check_counter () {
     fi
 }
 
+ctdb_should_stat () {
+    _interval="${1:-30}"
+
+    shift 1
+    _ctdb_counter_common "$1"
+
+    # unary counting!
+    _size=$(stat -c "%s" "$_counter_file" 2>/dev/null || echo 0)
+    if [ $_size -ne 0 ] && [ $(($_size % $_interval)) -eq 0 ] ; then
+        return 0
+    else
+        return 1
+    fi
+}
+
 ########################################################
 
 ctdb_status_dir="$CTDB_VARDIR/state/service_status"
