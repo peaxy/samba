@@ -673,13 +673,24 @@ bool ctdb_recovery_have_lock(struct ctdb_context *ctdb)
 bool ctdb_recovery_lock(struct ctdb_context *ctdb)
 {
 	struct flock lock;
+	bool retried = false;
 
+retry:
 	ctdb->recovery_lock_fd = open(ctdb->recovery_lock_file,
 				      O_RDWR|O_CREAT, 0600);
 	if (ctdb->recovery_lock_fd == -1) {
 		DEBUG(DEBUG_ERR,
 		      ("ctdb_recovery_lock: Unable to open %s - (%s)\n",
 		       ctdb->recovery_lock_file, strerror(errno)));
+
+		/* retry the open one time if we receive EINTR -
+		 * workaround until we know why FUSE interrrupted the open()
+		 * system call even though we specified to ignore (SIG_IGN) SIGPIPE.
+		 * - SA_RESTART does not have any affect while running on top of FUSE */
+		if (errno == EINTR && !retried) {
+			retried = true;
+			goto retry;
+		}
 		return false;
 	}
 
