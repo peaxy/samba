@@ -2517,7 +2517,7 @@ static void call_trans2findfirst(connection_struct *conn,
 
 	if (total_params < 13) {
 		reply_nterror(req, NT_STATUS_INVALID_PARAMETER);
-		goto out;
+		return;
 	}
 
 	dirtype = SVAL(params,0);
@@ -2560,13 +2560,13 @@ close_if_end = %d requires_resume_key = %d backup_priv = %d level = 0x%x, max_da
 			ask_sharemode = false;
 			if (!lp_unix_extensions()) {
 				reply_nterror(req, NT_STATUS_INVALID_LEVEL);
-				goto out;
+				return;
 			}
 			ucf_flags |= UCF_UNIX_NAME_LOOKUP;
 			break;
 		default:
 			reply_nterror(req, NT_STATUS_INVALID_LEVEL);
-			goto out;
+			return;
 	}
 
 	srvstr_get_path_wcard(ctx, params, req->flags2, &directory,
@@ -2574,7 +2574,7 @@ close_if_end = %d requires_resume_key = %d backup_priv = %d level = 0x%x, max_da
 			      STR_TERMINATE, &ntstatus, &mask_contains_wcard);
 	if (!NT_STATUS_IS_OK(ntstatus)) {
 		reply_nterror(req, ntstatus);
-		goto out;
+		return;
 	}
 
 	if (backup_priv) {
