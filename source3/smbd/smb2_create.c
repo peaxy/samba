@@ -214,7 +214,7 @@ NTSTATUS smbd_smb2_request_process_create(struct smbd_smb2_request *smb2req)
 		in_name_string_size = 0;
 	}
 
-	if (strlen(in_name_string) != in_name_string_size) {
+	if (!(in_create_options & FILE_OPEN_BY_FILE_ID) && strlen(in_name_string) != in_name_string_size) {
 		return smbd_smb2_request_error(smb2req, NT_STATUS_OBJECT_NAME_INVALID);
 	}
 
