@@ -478,6 +478,12 @@ static int vfswrap_mkdir(vfs_handle_struct *handle, const char *path, mode_t mod
 
 	result = mkdir(path, mode);
 
+/*
+ * Since our FUSE client does not support POSIX ACL validation,
+ * we will always run Samba in the pure NT ACL mode, (ie "ignore system acls = yes")
+ * We should always use chmod directly instead of manipulating the POSIX ACL entries.
+ */
+#if FUSE_POSIX_ACL_SUPPORT
 	if (result == 0 && !has_dacl) {
 		/*
 		 * We need to do this as the default behavior of POSIX ACLs
@@ -490,6 +496,7 @@ static int vfswrap_mkdir(vfs_handle_struct *handle, const char *path, mode_t mod
 		if ((SMB_VFS_CHMOD_ACL(handle->conn, path, mode) == -1) && (errno == ENOSYS))
 			errno = saved_errno;
 	}
+#endif
 
 	END_PROFILE(syscall_mkdir);
 	return result;
@@ -1663,13 +1670,17 @@ static int vfswrap_chmod(vfs_handle_struct *handle, const char *path, mode_t mod
 	int result;
 
 	START_PROFILE(syscall_chmod);
-
+/*
+ * Since our FUSE client does not support POSIX ACL validation,
+ * we will always run Samba in the pure NT ACL mode, (ie "ignore system acls = yes")
+ * We should always use chmod directly instead of manipulating the POSIX ACL entries.
+ */
+#if FUSE_POSIX_ACL_SUPPORT
 	/*
 	 * We need to do this due to the fact that the default POSIX ACL
 	 * chmod modifies the ACL *mask* for the group owner, not the
 	 * group owner bits directly. JRA.
 	 */
-
 
 	{
 		int saved_errno = errno; /* We might get ENOSYS */
@@ -1680,6 +1691,7 @@ static int vfswrap_chmod(vfs_handle_struct *handle, const char *path, mode_t mod
 		/* Error - return the old errno. */
 		errno = saved_errno;
 	}
+#endif
 
 	result = chmod(path, mode);
 	END_PROFILE(syscall_chmod);
@@ -1692,6 +1704,12 @@ static int vfswrap_fchmod(vfs_handle_struct *handle, files_struct *fsp, mode_t m
 
 	START_PROFILE(syscall_fchmod);
 
+/*
+ * Since our FUSE client does not support POSIX ACL validation,
+ * we will always run Samba in the pure NT ACL mode, (ie "ignore system acls = yes")
+ * We should always use chmod directly instead of manipulating the POSIX ACL entries.
+ */
+#if FUSE_POSIX_ACL_SUPPORT
 	/*
 	 * We need to do this due to the fact that the default POSIX ACL
 	 * chmod modifies the ACL *mask* for the group owner, not the
@@ -1707,6 +1725,7 @@ static int vfswrap_fchmod(vfs_handle_struct *handle, files_struct *fsp, mode_t m
 		/* Error - return the old errno. */
 		errno = saved_errno;
 	}
+#endif
 
 #if defined(HAVE_FCHMOD)
 	result = fchmod(fsp->fh->fd, mode);

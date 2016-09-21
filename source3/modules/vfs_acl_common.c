@@ -458,6 +458,11 @@ static NTSTATUS get_nt_acl_internal(vfs_handle_struct *handle,
 	switch (xattr_version) {
 	case 4:
 	{
+/*
+ * Since our FUSE driver does not support POSIX ACL, we won't bother
+ * attempt to fetch POSIX ACL altogether.
+ */
+#if FUSE_POSIX_ACL_SUPPORT
 		int ret;
 		char *sys_acl_blob_description;
 		DATA_BLOB sys_acl_blob;
@@ -495,6 +500,7 @@ static NTSTATUS get_nt_acl_internal(vfs_handle_struct *handle,
 				goto out;
 			}
 		}
+#endif
 
 		/* Otherwise, fall though and see if the NT ACL hash matches */
 	}
@@ -861,12 +867,20 @@ static NTSTATUS fset_nt_acl_common(vfs_handle_struct *handle, files_struct *fsp,
 		return status;
 	}
 
+/*
+ * Since our FUSE client does not support POSIX ACL, we won't attempt to
+ * fetch POSIX ACL at all.
+ */
+#if FUSE_POSIX_ACL_SUPPORT
 	/* Get the full underlying sd, then hash. */
 	ret = SMB_VFS_NEXT_SYS_ACL_BLOB_GET_FD(handle,
 					       fsp,
 					       frame,
 					       &sys_acl_description,
 					       &sys_acl_blob);
+#else
+	ret = (-ENODATA);
+#endif
 
 	/* If we fail to get the ACL blob (for some reason) then this
 	 * is not fatal, we just work based on the NT ACL only */
@@ -1083,7 +1097,15 @@ static int chmod_acl_module_common(struct vfs_handle_struct *handle,
 		/* Only allow this on POSIX pathnames. */
 		return SMB_VFS_NEXT_CHMOD(handle, path, mode);
 	}
+/*
+ * Our FUSE does not support POSIX ACL, so we need to pass the chmod call through
+ * instead of short circuit it here.
+ */
+#if FUSE_POSIX_ACL_SUPPORT
 	return 0;
+#else
+	return SMB_VFS_NEXT_CHMOD(handle, path, mode);
+#endif
 }
 
 static int fchmod_acl_module_common(struct vfs_handle_struct *handle,
@@ -1093,7 +1115,15 @@ static int fchmod_acl_module_common(struct vfs_handle_struct *handle,
 		/* Only allow this on POSIX opens. */
 		return SMB_VFS_NEXT_FCHMOD(handle, fsp, mode);
 	}
+/*
+ * Our FUSE does not support POSIX ACL, so we need to pass the chmod call through
+ * instead of short circuit it here.
+ */
+#if FUSE_POSIX_ACL_SUPPORT
 	return 0;
+#else
+	return SMB_VFS_NEXT_FCHMOD(handle, fsp, mode);
+#endif
 }
 
 static int chmod_acl_acl_module_common(struct vfs_handle_struct *handle,
@@ -1103,7 +1133,15 @@ static int chmod_acl_acl_module_common(struct vfs_handle_struct *handle,
 		/* Only allow this on POSIX pathnames. */
 		return SMB_VFS_NEXT_CHMOD_ACL(handle, name, mode);
 	}
+/*
+ * Our FUSE does not support POSIX ACL, so we need to pass the chmod call through
+ * instead of short circuit it here.
+ */
+#if FUSE_POSIX_ACL_SUPPORT
 	return 0;
+#else
+	return SMB_VFS_NEXT_CHMOD_ACL(handle, name, mode);
+#endif
 }
 
 static int fchmod_acl_acl_module_common(struct vfs_handle_struct *handle,
@@ -1113,5 +1151,13 @@ static int fchmod_acl_acl_module_common(struct vfs_handle_struct *handle,
 		/* Only allow this on POSIX opens. */
 		return SMB_VFS_NEXT_FCHMOD_ACL(handle, fsp, mode);
 	}
+/*
+ * Our FUSE does not support POSIX ACL, so we need to pass the chmod call through
+ * instead of short circuit it here.
+ */
+#if FUSE_POSIX_ACL_SUPPORT
 	return 0;
+#else
+	return SMB_VFS_NEXT_FCHMOD_ACL(handle, fsp, mode);
+#endif
 }

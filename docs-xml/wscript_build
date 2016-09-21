@@ -91,6 +91,7 @@ manpages='''
          manpages/vfstest.1
          manpages/wbinfo.1
          manpages/winbindd.8
+         manpages/vfs_asroot.8
          '''
 
 pam_winbind_manpages = '''
