@@ -1954,11 +1954,10 @@ NTSTATUS smbd_do_query_security_desc(connection_struct *conn,
 		psd->sacl = NULL;
 	}
 
-	/* If the SACL/DACL is NULL, but was requested, we mark that it is
-	 * present in the reply to match Windows behavior */
-	if (psd->sacl == NULL &&
-	    security_info_wanted & SECINFO_SACL)
-		psd->type |= SEC_DESC_SACL_PRESENT;
+
+	/* If the DACL is NULL, but was requested, we mark that it is
+	 * present in the reply to match Windows behavior. This
+	 * behavior is not applicable to SACL */
 	if (psd->dacl == NULL &&
 	    security_info_wanted & SECINFO_DACL)
 		psd->type |= SEC_DESC_DACL_PRESENT;
