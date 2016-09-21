@@ -511,3 +511,11 @@ bld.SAMBA3_MODULE('vfs_vxfs',
                  init_function='',
                  internal_module=bld.SAMBA3_IS_STATIC_MODULE('vfs_vxfs'),
                  enabled=bld.SAMBA3_IS_ENABLED_MODULE('vfs_vxfs'))
+
+bld.SAMBA3_MODULE('vfs_asroot',
+                 subsystem='vfs',
+                 source='vfs_asroot.c',
+                 deps='samba-util',
+                 init_function='',
+                 internal_module=bld.SAMBA3_IS_STATIC_MODULE('vfs_asroot'),
+                 enabled=bld.SAMBA3_IS_ENABLED_MODULE('vfs_asroot'))
