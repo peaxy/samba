@@ -314,5 +314,17 @@ void lpcfg_default_kdc_policy(struct loadparm_context *lp_ctx,
 
 const char *samba_version_string(void);
 
+/* The following definitions comes from source4/torture/raw/acls.c */
+#define ACL_FUSE_MNT            "acl-fuse-mnt"
+#define ACL_FSMB_MNT		"acl_fsmb_mnt"
+#define ACL_MLT_GRP             "acl-mlt-grp"
+#define ACL_MLT_USR             "acl-mlt-usr"
+#define ACL_MLT_PWD             "acl-mlt-pwd"
+#define ACL_ADM_USR             "acl-adm-usr"
+#define ACL_ADM_PWD             "acl-adm-pwd"
+#define ACL_ADS_RLM		"acl-ads-rlm"
+#define ACL_ADS_WKG		"acl-ads-wkg"
+#define ACL_ADS_HST		"acl-ads-hst"
+#define ACL_MAP_FCT		"acl_map_fct"
 
 #endif /* _PARAM_H */

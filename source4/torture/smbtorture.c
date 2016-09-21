@@ -384,6 +384,20 @@ int main(int argc, const char *argv[])
 	const char **restricted = NULL;
 	int num_restricted = -1;
 	const char *load_list = NULL;
+
+	/* parameter to test NT ACL against PEAXY FUSE */
+	const char *acl_fuse_mnt = NULL;
+	const char *acl_fsmb_mnt = NULL;
+	const char *acl_mlt_grp = NULL;
+	const char *acl_mlt_usr = NULL;
+	const char *acl_mlt_pwd = NULL;
+	const char *acl_adm_usr = NULL;
+	const char *acl_adm_pwd = NULL;
+	const char *acl_ads_rlm = NULL;
+	const char *acl_ads_wkg = NULL;
+	const char *acl_ads_hst = NULL;
+	int acl_map_fct = 1;
+
 	enum {OPT_LOADFILE=1000,OPT_UNCLIST,OPT_TIMELIMIT,OPT_DNS, OPT_LIST,
 	      OPT_DANGEROUS,OPT_SMB_PORTS,OPT_ASYNC,OPT_NUMPROGS,
 	      OPT_EXTRA_USER,};
@@ -393,6 +407,17 @@ int main(int argc, const char *argv[])
 		{"format", 0, POPT_ARG_STRING, &ui_ops_name, 0, "Output format (one of: simple, subunit)", NULL },
 		{"smb-ports",	'p', POPT_ARG_STRING, NULL,     OPT_SMB_PORTS,	"SMB ports", 	NULL},
 		{"basedir",	  0, POPT_ARG_STRING, &basedir, 0, "base directory", "BASEDIR" },
+		{ACL_FUSE_MNT,	  0, POPT_ARG_STRING, &acl_fuse_mnt, 0, "Backend FUSE mount point", NULL},
+		{ACL_FSMB_MNT,	  0, POPT_ARG_STRING, &acl_fsmb_mnt, 0, "Backend FUSE mount point with smb_mnt=1", NULL},
+		{ACL_MLT_GRP,	  0, POPT_ARG_STRING, &acl_mlt_grp, 0, "Prefix of groups names for ACL test", NULL},
+		{ACL_MLT_USR,	  0, POPT_ARG_STRING, &acl_mlt_usr, 0, "Prefix of user names for ACL test", NULL},
+		{ACL_MLT_PWD,	  0, POPT_ARG_STRING, &acl_mlt_pwd, 0, "Shared password for multiple user for ACL test", NULL},
+		{ACL_ADM_USR,	  0, POPT_ARG_STRING, &acl_adm_usr, 0, "DOM Admin account used in ACL test", NULL},
+		{ACL_ADM_PWD,	  0, POPT_ARG_STRING, &acl_adm_pwd, 0, "DOM Admin password used in ACL test", NULL},
+		{ACL_ADS_RLM,	  0, POPT_ARG_STRING, &acl_ads_rlm, 0, "DOM Realm used in ACL test", NULL},
+		{ACL_ADS_WKG,	  0, POPT_ARG_STRING, &acl_ads_wkg, 0, "DOM Workgroup used in ACL test", NULL},
+		{ACL_ADS_HST,	  0, POPT_ARG_STRING, &acl_ads_hst, 0, "DOM DC host used in ACL test", NULL},
+		{ACL_MAP_FCT,	  0, POPT_ARG_INT,    &acl_map_fct, 1, "Indicates whether acl map full control is enabled", NULL},
 		{"seed",	  0, POPT_ARG_INT,  &torture_seed, 	0,	"Seed to use for randomizer", 	NULL},
 		{"num-progs",	  0, POPT_ARG_INT,  NULL, 	OPT_NUMPROGS,	"num progs",	NULL},
 		{"num-ops",	  0, POPT_ARG_INT,  &torture_numops, 	0, 	"num ops",	NULL},
@@ -578,6 +603,34 @@ int main(int argc, const char *argv[])
 	argv_new = discard_const_p(char *, poptGetArgs(pc));
 
 	argc_new = argc;
+
+	/* parse parameters needed for ACL tests */
+	if (acl_fuse_mnt)
+		lpcfg_set_cmdline(cmdline_lp_ctx, "torture:" ACL_FUSE_MNT, acl_fuse_mnt);
+	if (acl_fsmb_mnt)
+		lpcfg_set_cmdline(cmdline_lp_ctx, "torture:" ACL_FSMB_MNT, acl_fsmb_mnt);
+	if (acl_mlt_grp)
+		lpcfg_set_cmdline(cmdline_lp_ctx, "torture:" ACL_MLT_GRP, acl_mlt_grp);
+	if (acl_mlt_usr)
+		lpcfg_set_cmdline(cmdline_lp_ctx, "torture:" ACL_MLT_USR, acl_mlt_usr);
+	if (acl_mlt_pwd)
+		lpcfg_set_cmdline(cmdline_lp_ctx, "torture:" ACL_MLT_PWD, acl_mlt_pwd);
+	if (acl_adm_usr)
+		lpcfg_set_cmdline(cmdline_lp_ctx, "torture:" ACL_ADM_USR, acl_adm_usr);
+	if (acl_adm_pwd)
+		lpcfg_set_cmdline(cmdline_lp_ctx, "torture:" ACL_ADM_PWD, acl_adm_pwd);
+	if (acl_ads_rlm)
+		lpcfg_set_cmdline(cmdline_lp_ctx, "torture:" ACL_ADS_RLM, acl_ads_rlm);
+	if (acl_ads_wkg)
+		lpcfg_set_cmdline(cmdline_lp_ctx, "torture:" ACL_ADS_WKG, acl_ads_wkg);
+	if (acl_ads_hst)
+		lpcfg_set_cmdline(cmdline_lp_ctx, "torture:" ACL_ADS_HST, acl_ads_hst);
+	if (acl_map_fct)
+		lpcfg_set_cmdline(cmdline_lp_ctx, "torture:" ACL_MAP_FCT, "true");
+	else
+		lpcfg_set_cmdline(cmdline_lp_ctx, "torture:" ACL_MAP_FCT, "false");
+
+
 	for (i=0; i<argc; i++) {
 		if (argv_new[i] == NULL) {
 			argc_new = i;

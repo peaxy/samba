@@ -74,4 +74,11 @@
 /* samba_setXXid functions. */
 #include "../lib/util/setid.h"
 
+// copied from source3/include/includes.h
+#ifndef FSTRING_LEN
+#define FSTRING_LEN 256
+typedef char fstring[FSTRING_LEN];
+#endif
+
+
 #endif /* _INCLUDES_H */

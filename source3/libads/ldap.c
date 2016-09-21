@@ -2241,6 +2241,22 @@ static void dump_sid(ADS_STRUCT *ads, const char *field, struct berval **values)
 	}
 }
 
+static char* get_sid_str(ADS_STRUCT *ads, const char *field, struct berval **values)
+{
+	int i;
+	for (i=0; values[i]; i++) {
+		struct dom_sid sid;
+		fstring tmp;
+		if (!sid_parse(values[i]->bv_val, values[i]->bv_len, &sid)) {
+			return NULL;
+		}
+		if (strcmp(field, "objectSid") == 0)
+			return strdup(sid_to_fstring(tmp, &sid));
+	}
+	return NULL;
+}
+
+
 /*
   dump ntSecurityDescriptor
 */
@@ -2397,7 +2413,6 @@ static bool ads_dump_field(ADS_STRUCT *ads, char *field, void **values, void *da
 				ber_vals = ldap_get_values_len(ads->ldap.ld, 
 						 (LDAPMessage *)msg, field);
 				fn(ads, field, (void **) ber_vals, data_area);
-
 				ldap_value_free_len(ber_vals);
 			}
 			ldap_memfree(utf8_field);
@@ -2409,6 +2424,71 @@ static bool ads_dump_field(ADS_STRUCT *ads, char *field, void **values, void *da
 	}
 	talloc_destroy(ctx);
 }
+
+
+/**
+ * Function used to extract SID string from the LDAP result.
+ **/
+#if 1 // Needed for smbtorture new test cases raw.acls.fuse_file and raw.acls.fuse_dir
+char* ads_get_sid_from_results(ADS_STRUCT *ads, LDAPMessage *res)
+{
+	LDAPMessage *msg;
+	TALLOC_CTX *ctx;
+	size_t converted_size;
+	char *sid_str = NULL;
+
+	if (!(ctx = talloc_init("ads_process_results")))
+		return NULL;
+
+	for (msg = ads_first_entry(ads, res); msg;
+	     msg = ads_next_entry(ads, msg)) {
+		char *utf8_field;
+		BerElement *b;
+
+		for (utf8_field=ldap_first_attribute(ads->ldap.ld,
+						     (LDAPMessage *)msg,&b);
+		     utf8_field;
+		     utf8_field=ldap_next_attribute(ads->ldap.ld,
+						    (LDAPMessage *)msg,b)) {
+			struct berval **ber_vals;
+			char **str_vals;
+			char **utf8_vals;
+			char *field;
+			bool string;
+
+			if (!pull_utf8_talloc(ctx, &field, utf8_field,
+					      &converted_size))
+			{
+				DEBUG(0,("ads_process_results: "
+					 "pull_utf8_talloc failed: %s",
+					 strerror(errno)));
+			}
+
+			if (strcasecmp_m("objectSid", field) == 0) {
+				ber_vals = ldap_get_values_len(ads->ldap.ld,
+						 (LDAPMessage *)msg, field);
+				sid_str = get_sid_str(ads, field, ber_vals);
+				if (sid_str) {
+					ldap_value_free_len(ber_vals);
+					ldap_memfree(utf8_field);
+					break;
+				}
+
+				ldap_value_free_len(ber_vals);
+			}
+			ldap_memfree(utf8_field);
+		}
+		ber_free(b, 0);
+		talloc_free_children(ctx);
+
+		if (sid_str) break;
+
+	}
+	talloc_destroy(ctx);
+
+	return sid_str;
+}
+#endif
 
 /**
  * count how many replies are in a LDAPMessage

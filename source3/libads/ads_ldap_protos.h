@@ -111,6 +111,7 @@ LDAPMessage *ads_next_message(ADS_STRUCT *ads, LDAPMessage *res);
 void ads_process_results(ADS_STRUCT *ads, LDAPMessage *res,
 			 bool (*fn)(ADS_STRUCT *,char *, void **, void *),
 			 void *data_area);
+char* ads_get_sid_from_results(ADS_STRUCT *ads, LDAPMessage *res);
 void ads_dump(ADS_STRUCT *ads, LDAPMessage *res);
 
 struct GROUP_POLICY_OBJECT;
