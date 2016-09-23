@@ -4099,7 +4099,6 @@ NTSTATUS set_nt_acl(files_struct *fsp, uint32_t security_info_sent, const struct
 	NTSTATUS status;
 	bool set_acl_as_root = false;
 	bool acl_set_support = false;
-	bool ret = false;
 	struct security_descriptor *psd = NULL;
 	bool add_extra_aces = false;
 	bool reject_extra_aces = false;
@@ -4257,9 +4256,46 @@ NTSTATUS set_nt_acl(files_struct *fsp, uint32_t security_info_sent, const struct
 				     &dir_ace_list, security_info_sent, psd,
 				     add_extra_aces, reject_extra_aces);
 
-	/* Ignore W2K traverse DACL set. */
 	if (!file_ace_list && !dir_ace_list) {
-		return NT_STATUS_OK;
+		/*
+		 * If the DACL has 0 entries, be sure we force the POSIX perm to
+		 * 400 for files and 700 for directories.
+		 * This behavior is consistent with the logic in convert_canon_ace_to_posix_perms().
+		 */
+		if ((security_info_sent & SECINFO_DACL) &&
+			(psd->type & SEC_DESC_DACL_PRESENT) &&
+			(psd->dacl) && (psd->dacl->num_aces == 0)) {
+
+			int sret = -1;
+			mode_t posix_perms = (mode_t)0;
+
+			/* The owner must have at least read access */
+			posix_perms |= S_IRUSR;
+			if (fsp->is_directory) {
+				/* The owner must have full access for directory */
+				posix_perms |= (S_IWUSR|S_IXUSR);
+
+				/* If the backend (FUSE) support POSIX ACL, then we won't need S_SETGID,
+				 * because inheritance of POSIX ACL would inherit parent's primary group
+				 * as a normal group. However, since FUSE does not support validation of
+				 * POSIX ACL, we will always leverage S_SETGID to inherit primary group.
+				 */
+				posix_perms |= S_SETGID;
+
+				sret = SMB_VFS_CHMOD(conn, fsp->fsp_name->base_name, posix_perms);
+			} else {
+				sret = SMB_VFS_CHMOD(conn, fsp->fsp_name->base_name, posix_perms);
+			}
+			if (sret == -1) {
+				DEBUG(3, (__location__ ": fchmod_acl failed for %s. Error = %s\n",
+						fsp_str_dbg(fsp), strerror(errno)));
+				return map_nt_error_from_unix(errno);
+			} else
+				return NT_STATUS_OK;
+		} else {
+			/* Ignore W2K traverse DACL set. */
+			return NT_STATUS_OK;
+		}
 	}
 
 	if (!acl_perms) {
