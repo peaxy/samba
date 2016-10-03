@@ -295,6 +295,23 @@ static void imessaging_dgm_recv(const uint8_t *buf, size_t buf_len,
 				void *private_data);
 
 /*
+ * Wrapper to trigger smb_panic when imessaging_init failed during winbind init
+ */
+int iwinbind_init = 0;
+struct imessaging_context *winbind_imessaging_init(TALLOC_CTX *mem_ctx,
+					   struct loadparm_context *lp_ctx,
+					   struct server_id server_id,
+					   struct tevent_context *ev,
+					   bool auto_remove)
+{
+	struct imessaging_context *imsg_ctx;
+	iwinbind_init = 1;
+	imsg_ctx = imessaging_init(mem_ctx, lp_ctx, server_id, ev, auto_remove);
+	iwinbind_init = 0;
+	return imsg_ctx;
+}
+
+/*
   create the listening socket and setup the dispatcher
 
   use auto_remove=true when you want a destructor to remove the
@@ -314,11 +331,15 @@ struct imessaging_context *imessaging_init(TALLOC_CTX *mem_ctx,
 	const char *lock_dir = NULL;
 
 	if (ev == NULL) {
+		if (iwinbind_init)
+			smb_panic("ev is NULL\n");
 		return NULL;
 	}
 
 	msg = talloc_zero(mem_ctx, struct imessaging_context);
 	if (msg == NULL) {
+		if (iwinbind_init)
+			smb_panic("failed to allocate imessaging_context\n");
 		return NULL;
 	}
 
@@ -326,24 +347,34 @@ struct imessaging_context *imessaging_init(TALLOC_CTX *mem_ctx,
 
 	lock_dir = lpcfg_lock_directory(lp_ctx);
 	if (lock_dir == NULL) {
+		if (iwinbind_init)
+			smb_panic("failed to fetch lpcfg_lock_directory\n");
 		goto fail;
 	}
 
 	msg->sock_dir = lpcfg_private_path(msg, lp_ctx, "msg.sock");
 	if (msg->sock_dir == NULL) {
+		if (iwinbind_init)
+			smb_panic("failed to fetch lpcfg_private_path\n");
 		goto fail;
 	}
 	ok = directory_create_or_exist_strict(msg->sock_dir, geteuid(), 0700);
 	if (!ok) {
+		if (iwinbind_init)
+			smb_panic("failed to create msg->sock_dir\n");
 		goto fail;
 	}
 
 	msg->lock_dir = lpcfg_lock_path(msg, lp_ctx, "msg.lock");
 	if (msg->lock_dir == NULL) {
+		if (iwinbind_init)
+			smb_panic("failed to fetch lpcfg_lock_path\n");
 		goto fail;
 	}
 	ok = directory_create_or_exist_strict(msg->lock_dir, geteuid(), 0755);
 	if (!ok) {
+		if (iwinbind_init)
+			smb_panic("failed to create msg->lock_dir\n");
 		goto fail;
 	}
 
@@ -352,17 +383,23 @@ struct imessaging_context *imessaging_init(TALLOC_CTX *mem_ctx,
 		imessaging_dgm_recv, msg, &ret);
 
 	if (msg->msg_dgm_ref == NULL) {
+		if (iwinbind_init)
+			smb_panic("messaging_dgm_ref return NULL\n");
 		goto fail;
 	}
 
 	msg->server_id     = server_id;
 	msg->idr           = idr_init(msg);
 	if (msg->idr == NULL) {
+		if (iwinbind_init)
+			smb_panic("msg->idr is NULL\n");
 		goto fail;
 	}
 
 	msg->dispatch_tree = idr_init(msg);
 	if (msg->dispatch_tree == NULL) {
+		if (iwinbind_init)
+			smb_panic("msg->dispatch_tree is NULL\n");
 		goto fail;
 	}
 
@@ -373,6 +410,8 @@ struct imessaging_context *imessaging_init(TALLOC_CTX *mem_ctx,
 		TDB_INCOMPATIBLE_HASH|TDB_CLEAR_IF_FIRST|
 		lpcfg_tdb_flags(lp_ctx, 0));
 	if (msg->names == NULL) {
+		if (iwinbind_init)
+			smb_panic("msg->names is NULL\n");
 		goto fail;
 	}
 

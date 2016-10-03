@@ -89,7 +89,7 @@ struct messaging_context *winbind_messaging_context(void)
 	 * Note we MUST use the NULL context here, not the autofree context,
 	 * to avoid side effects in forked children exiting.
 	 */
-	msg = messaging_init(NULL, winbind_event_context());
+	msg = winbind_messaging_init(NULL, winbind_event_context());
 	if (msg == NULL) {
 		smb_panic("Could not init winbindd's messaging context.\n");
 	}
@@ -114,7 +114,7 @@ struct imessaging_context *winbind_imessaging_context(void)
 	 * Note we MUST use the NULL context here, not the autofree context,
 	 * to avoid side effects in forked children exiting.
 	 */
-	msg = imessaging_init(NULL, lp_ctx, procid_self(), winbind_event_context(), false);
+	msg = winbind_imessaging_init(NULL, lp_ctx, procid_self(), winbind_event_context(), false);
 	talloc_unlink(NULL, lp_ctx);
 
 	if (msg == NULL) {

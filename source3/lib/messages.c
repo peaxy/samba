@@ -287,6 +287,20 @@ static const char *private_path(const char *name)
 	return talloc_asprintf(talloc_tos(), "%s/%s", lp_private_dir(), name);
 }
 
+/*
+ * Wrapper to trigger smb_panic when messaging_init failed during winbind init
+ */
+int winbind_init = 0;
+struct messaging_context *winbind_messaging_init(TALLOC_CTX *mem_ctx,
+						 struct tevent_context *ev)
+{
+	struct messaging_context *msg_ctx;
+	winbind_init = 1;
+	msg_ctx = messaging_init(mem_ctx, ev);
+	winbind_init = 0;
+	return msg_ctx;
+}
+
 struct messaging_context *messaging_init(TALLOC_CTX *mem_ctx, 
 					 struct tevent_context *ev)
 {
@@ -298,6 +312,8 @@ struct messaging_context *messaging_init(TALLOC_CTX *mem_ctx,
 	bool ok;
 
 	if (!(ctx = talloc_zero(mem_ctx, struct messaging_context))) {
+		if (winbind_init)
+			smb_panic(": talloc_zer return NULL\n");
 		return NULL;
 	}
 
@@ -308,6 +324,8 @@ struct messaging_context *messaging_init(TALLOC_CTX *mem_ctx,
 
 	lck_path = lock_path("msg.lock");
 	if (lck_path == NULL) {
+		if (winbind_init)
+			smb_panic(": lock_path returns NULL\n");
 		TALLOC_FREE(ctx);
 		return NULL;
 	}
@@ -315,6 +333,8 @@ struct messaging_context *messaging_init(TALLOC_CTX *mem_ctx,
 	ok = directory_create_or_exist_strict(lck_path, sec_initial_uid(),
 					      0755);
 	if (!ok) {
+		if (winbind_init)
+			smb_panic(": could not create lock directory %s, error %s\n");
 		DEBUG(10, ("%s: Could not create lock directory: %s\n",
 			   __func__, strerror(errno)));
 		TALLOC_FREE(ctx);
@@ -323,6 +343,8 @@ struct messaging_context *messaging_init(TALLOC_CTX *mem_ctx,
 
 	priv_path = private_path("msg.sock");
 	if (priv_path == NULL) {
+		if (winbind_init)
+			smb_panic(": private_path msg.sock return NULL\n");
 		TALLOC_FREE(ctx);
 		return NULL;
 	}
@@ -330,6 +352,8 @@ struct messaging_context *messaging_init(TALLOC_CTX *mem_ctx,
 	ok = directory_create_or_exist_strict(priv_path, sec_initial_uid(),
 					      0700);
 	if (!ok) {
+		if (winbind_init)
+			smb_panic(": could not create msg directory, %s\n");
 		DEBUG(10, ("%s: Could not create msg directory: %s\n",
 			   __func__, strerror(errno)));
 		TALLOC_FREE(ctx);
@@ -341,6 +365,8 @@ struct messaging_context *messaging_init(TALLOC_CTX *mem_ctx,
 		priv_path, lck_path, messaging_recv_cb, ctx, &ret);
 
 	if (ctx->msg_dgm_ref == NULL) {
+		if (winbind_init)
+			smb_panic(": messaging_dgm_ref failed: %s\n");
 		DEBUG(2, ("messaging_dgm_ref failed: %s\n", strerror(ret)));
 		TALLOC_FREE(ctx);
 		return NULL;
@@ -352,6 +378,8 @@ struct messaging_context *messaging_init(TALLOC_CTX *mem_ctx,
 		status = messaging_ctdbd_init(ctx, ctx, &ctx->remote);
 
 		if (!NT_STATUS_IS_OK(status)) {
+			if (winbind_init)
+				smb_panic(": messaging_ctdbd_init failed. %s\n");
 			DEBUG(2, ("messaging_ctdbd_init failed: %s\n",
 				  nt_errstr(status)));
 			TALLOC_FREE(ctx);
@@ -364,6 +392,8 @@ struct messaging_context *messaging_init(TALLOC_CTX *mem_ctx,
 		ctx, ctx->id, lp_lock_directory(), 0,
 		TDB_INCOMPATIBLE_HASH|TDB_CLEAR_IF_FIRST);
 	if (ctx->names_db == NULL) {
+		if (winbind_init)
+			smb_panic(": names_db is NULL\n");
 		DEBUG(10, ("%s: server_id_db_init failed\n", __func__));
 		TALLOC_FREE(ctx);
 		return NULL;
