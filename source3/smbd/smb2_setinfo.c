@@ -299,7 +299,7 @@ static void defer_rename_done(struct tevent_req *subreq)
 	}
 
 	/* should we pass FLAG_CASELESS_PATHNAMES here? */
-	ok = set_current_service(state->smb2req->tcon->compat, 0, true);
+	ok = set_current_service(state->smb2req->tcon->compat, 0, true, false);
 	if (!ok) {
 		tevent_req_nterror(state->req, NT_STATUS_ACCESS_DENIED);
 		return;

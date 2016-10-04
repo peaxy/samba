@@ -166,7 +166,7 @@ bool reload_services(struct smbd_server_connection *sconn,
 	reset_stat_cache();
 
 	/* this forces service parameters to be flushed */
-	set_current_service(NULL,0,True);
+	set_current_service(NULL,0,True,False);
 
 	return(ret);
 }

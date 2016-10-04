@@ -848,7 +848,7 @@ void process_blocking_lock_queue(struct smbd_server_connection *sconn)
 
 		set_current_service(blr->fsp->conn,
 				SVAL(blr->req->inbuf,smb_flg),
-				false);
+				false, false);
 
 		/*
 		 * Remove the pending lock we're waiting on.

@@ -178,7 +178,7 @@ bool set_conn_connectpath(connection_struct *conn, const char *connectpath)
  Load parameters specific to a connection/service.
 ****************************************************************************/
 
-bool set_current_service(connection_struct *conn, uint16_t flags, bool do_chdir)
+bool set_current_service(connection_struct *conn, uint16_t flags, bool do_chdir, bool is_dcnt)
 {
 	int snum;
 
@@ -196,7 +196,10 @@ bool set_current_service(connection_struct *conn, uint16_t flags, bool do_chdir)
 	    vfs_ChDir(conn,conn->origpath) != 0) {
                 DEBUG(((errno!=EACCES)?0:3),("chdir (%s) failed, reason: %s\n",
                          conn->connectpath, strerror(errno)));
-		return(False);
+
+		/* just ignore the error if we are disconnecting and we get EINTR for the vfs_ChDir */
+		if (!is_dcnt || errno != EINTR)
+			return(False);
 	}
 
 	if ((conn == last_conn) && (last_flags == flags)) {

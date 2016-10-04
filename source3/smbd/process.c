@@ -1605,7 +1605,7 @@ static connection_struct *switch_message(uint8_t type, struct smb_request *req)
 
 		if (!set_current_service(conn,SVAL(req->inbuf,smb_flg),
 					 (flags & (AS_USER|DO_CHDIR)
-					  ?True:False))) {
+					  ?True:False),False)) {
 			reply_nterror(req, NT_STATUS_ACCESS_DENIED);
 			return conn;
 		}

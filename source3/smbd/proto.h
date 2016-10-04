@@ -999,7 +999,7 @@ void smbd_exit_server_cleanly(const char *const reason) _NORETURN_;
 
 bool set_conn_connectpath(connection_struct *conn, const char *connectpath);
 NTSTATUS set_conn_force_user_group(connection_struct *conn, int snum);
-bool set_current_service(connection_struct *conn, uint16_t flags, bool do_chdir);
+bool set_current_service(connection_struct *conn, uint16_t flags, bool do_chdir, bool is_dcnt);
 void load_registry_shares(void);
 int add_home_service(const char *service, const char *username, const char *homedir);
 int find_service(TALLOC_CTX *ctx, const char *service, char **p_service_out);
