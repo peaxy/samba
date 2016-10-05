@@ -4342,7 +4342,7 @@ NTSTATUS set_nt_acl(files_struct *fsp, uint32_t security_info_sent, const struct
 			free_canon_ace_list(dir_ace_list);
 			return map_nt_error_from_unix(errno);
 		} else {
-			DEBUG(0, (__location__ ": set_canon_ace_list returned %s, acl_set_support %s\n",
+			DEBUG(10, (__location__ ": set_canon_ace_list returned %s, acl_set_support %s\n",
 				(ret)? "TRUE" : "FALSE", (acl_set_support)? "TRUE":"FALSE"));
 		}
 	}
@@ -4366,7 +4366,7 @@ NTSTATUS set_nt_acl(files_struct *fsp, uint32_t security_info_sent, const struct
 				free_canon_ace_list(dir_ace_list);
 				return map_nt_error_from_unix(errno);
 			} else if (!acl_set_support) {
-				DEBUG(0, (__location__ ": set_canon_ace_list for directory dir_ace_list - acl_set_support is FALSE\n"));
+				DEBUG(10, (__location__ ": set_canon_ace_list for directory dir_ace_list - acl_set_support is FALSE\n"));
 			}
 		} else {
 			int sret = -1;
@@ -4429,7 +4429,7 @@ NTSTATUS set_nt_acl(files_struct *fsp, uint32_t security_info_sent, const struct
 			unbecome_root();
 		}
 
-		DEBUG(0, (__location__ ": process set custom PERM for POSIX ACL\n"));
+		DEBUG(10, (__location__ ": process set custom PERM for POSIX ACL\n"));
 
 		reject_extra_aces = false;
 		status = set_posix_perm_for_nt_acl(fsp, security_info_sent, psd, reject_extra_aces, orig_mode);
@@ -4446,7 +4446,7 @@ NTSTATUS set_nt_acl(files_struct *fsp, uint32_t security_info_sent, const struct
 
 	if(!acl_set_support && acl_perms) {
 
-		DEBUG(0, (__location__ ": Process pure posix perm because ACL was not supported\n"));
+		DEBUG(10, (__location__ ": Process pure posix perm because ACL was not supported\n"));
 		reject_extra_aces = true;
 		status = set_posix_perm_for_nt_acl(fsp, security_info_sent, psd, reject_extra_aces, orig_mode);
 		if (!NT_STATUS_IS_OK(status)) {
