@@ -6044,6 +6044,13 @@ static NTSTATUS smb_set_file_dosmode(connection_struct *conn,
 		return NT_STATUS_NO_MEMORY;
 	}
 
+	if (IS_DOS_DIR(dosmode) && !S_ISDIR(smb_fname_base->st.st_ex_mode)) {
+		DEBUG(10, (__location__ ": file_set dosmode of %s failed. STATUS_INVALID_PARAMETER\n",
+			smb_fname_str_dbg(smb_fname_base)));
+		status = NT_STATUS_INVALID_PARAMETER;
+		goto out;
+	}
+
 	if (dosmode) {
 		if (S_ISDIR(smb_fname_base->st.st_ex_mode)) {
 			dosmode |= FILE_ATTRIBUTE_DIRECTORY;
