@@ -824,7 +824,7 @@ static NTSTATUS fset_nt_acl_common(vfs_handle_struct *handle, files_struct *fsp,
 		/* We got access denied here. If we're already root,
 		   or we didn't need to do a chown, or the fsp isn't
 		   open with WRITE_OWNER access, just return. */
-		if (get_current_uid(handle->conn) == 0 ||
+		if (get_conn_uid(handle->conn) == 0 ||
 				chown_needed == false ||
 				!(fsp->access_mask & SEC_STD_WRITE_OWNER)) {
 			TALLOC_FREE(frame);
@@ -840,9 +840,11 @@ static NTSTATUS fset_nt_acl_common(vfs_handle_struct *handle, files_struct *fsp,
 		/* Ok, we failed to chown and we have
 		   SEC_STD_WRITE_OWNER access - override. */
 		become_root();
+		smb_forced_root_inc();
 		status = SMB_VFS_NEXT_FSET_NT_ACL(handle, fsp,
 				security_info_sent, psd);
 		unbecome_root();
+		smb_forced_root_dec();
 		if (!NT_STATUS_IS_OK(status)) {
 			TALLOC_FREE(frame);
 			return status;
@@ -956,6 +958,8 @@ static int acl_common_remove_object(vfs_handle_struct *handle,
 	struct smb_filename local_fname;
 	int saved_errno = 0;
 	char *saved_dir = NULL;
+	bool impersonate_root = false;
+	const struct security_unix_token *current_user_ut = get_current_utok(handle->conn);
 
 	saved_dir = vfs_GetWd(talloc_tos(),conn);
 	if (!saved_dir) {
@@ -1012,13 +1016,21 @@ static int acl_common_remove_object(vfs_handle_struct *handle,
 		goto out;
 	}
 
-	become_root();
+	if (current_user_ut->uid != 0) {
+		become_root();
+		impersonate_root = true;
+		smb_forced_root_inc();
+	}
+
 	if (is_directory) {
 		ret = SMB_VFS_NEXT_RMDIR(handle, final_component);
 	} else {
 		ret = SMB_VFS_NEXT_UNLINK(handle, &local_fname);
 	}
-	unbecome_root();
+	if (impersonate_root) {
+		unbecome_root();
+		smb_forced_root_dec();
+	}
 
 	if (ret == -1) {
 		saved_errno = errno;

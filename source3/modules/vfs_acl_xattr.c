@@ -48,6 +48,8 @@ static NTSTATUS get_acl_blob(TALLOC_CTX *ctx,
 	uint8_t *tmp;
 	ssize_t sizeret;
 	int saved_errno = 0;
+	bool impersonate_root = false;
+	const struct security_unix_token *current_user_ut = get_current_utok(handle->conn);
 
 	ZERO_STRUCTP(pblob);
 
@@ -60,7 +62,10 @@ static NTSTATUS get_acl_blob(TALLOC_CTX *ctx,
 	}
 	val = tmp;
 
-	become_root();
+	if (current_user_ut->uid != 0) {
+		become_root();
+		impersonate_root = true;
+	}
 	if (fsp && fsp->fh->fd != -1) {
 		sizeret = SMB_VFS_FGETXATTR(fsp, XATTR_NTACL_NAME, val, size);
 	} else {
@@ -70,7 +75,10 @@ static NTSTATUS get_acl_blob(TALLOC_CTX *ctx,
 	if (sizeret == -1) {
 		saved_errno = errno;
 	}
-	unbecome_root();
+
+	if (impersonate_root) {
+		unbecome_root();
+	}
 
 	/* Max ACL size is 65536 bytes. */
 	if (sizeret == -1) {
@@ -101,11 +109,16 @@ static NTSTATUS store_acl_blob_fsp(vfs_handle_struct *handle,
 {
 	int ret;
 	int saved_errno = 0;
+	bool impersonate_root = false;
+	const struct security_unix_token *current_user_ut = get_current_utok(handle->conn);
 
 	DEBUG(10,("store_acl_blob_fsp: storing blob length %u on file %s\n",
 		  (unsigned int)pblob->length, fsp_str_dbg(fsp)));
 
-	become_root();
+	if (current_user_ut->uid != 0) {
+		become_root();
+		impersonate_root = true;
+	}
 	if (fsp->fh->fd != -1) {
 		ret = SMB_VFS_FSETXATTR(fsp, XATTR_NTACL_NAME,
 			pblob->data, pblob->length, 0);
@@ -117,7 +130,9 @@ static NTSTATUS store_acl_blob_fsp(vfs_handle_struct *handle,
 	if (ret) {
 		saved_errno = errno;
 	}
-	unbecome_root();
+	if (impersonate_root) {
+		unbecome_root();
+	}
 	if (ret) {
 		DEBUG(5, ("store_acl_blob_fsp: setting attr failed for file %s"
 			"with error %s\n",
@@ -138,6 +153,9 @@ static int sys_acl_set_file_xattr(vfs_handle_struct *handle,
                               SMB_ACL_TYPE_T type,
                               SMB_ACL_T theacl)
 {
+	bool impersonate_root = false;
+	const struct security_unix_token *current_user_ut = get_current_utok(handle->conn);
+
 	int ret = SMB_VFS_NEXT_SYS_ACL_SET_FILE(handle,
 						name,
 						type,
@@ -146,9 +164,14 @@ static int sys_acl_set_file_xattr(vfs_handle_struct *handle,
 		return -1;
 	}
 
-	become_root();
+	if (current_user_ut->uid != 0) {
+		become_root();
+		impersonate_root = true;
+	}
 	SMB_VFS_REMOVEXATTR(handle->conn, name, XATTR_NTACL_NAME);
-	unbecome_root();
+	if (impersonate_root) {
+		unbecome_root();
+	}
 
 	return ret;
 }
@@ -161,6 +184,9 @@ static int sys_acl_set_fd_xattr(vfs_handle_struct *handle,
                             files_struct *fsp,
                             SMB_ACL_T theacl)
 {
+	bool impersonate_root = false;
+	const struct security_unix_token *current_user_ut = get_current_utok(handle->conn);
+
 	int ret = SMB_VFS_NEXT_SYS_ACL_SET_FD(handle,
 						fsp,
 						theacl);
@@ -168,9 +194,14 @@ static int sys_acl_set_fd_xattr(vfs_handle_struct *handle,
 		return -1;
 	}
 
-	become_root();
+	if (current_user_ut->uid != 0) {
+		become_root();
+		impersonate_root = true;
+	}
 	SMB_VFS_FREMOVEXATTR(fsp, XATTR_NTACL_NAME);
-	unbecome_root();
+	if (impersonate_root) {
+		unbecome_root();
+	}
 
 	return ret;
 }

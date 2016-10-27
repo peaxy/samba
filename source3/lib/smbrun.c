@@ -22,6 +22,9 @@
 
 /* need to move this from here!! need some sleep ... */
 struct current_user current_user;
+int smb_forced_root_cnt;
+uint64_t saved_conn_vuid;
+connection_struct *saved_conn;
 
 /****************************************************************************
 This is a utility function of smbrun().

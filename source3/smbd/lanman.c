@@ -4228,7 +4228,7 @@ static bool api_RNetUserGetInfo(struct smbd_server_connection *sconn,
 		const char *homedir = info->info21.home_directory.string;
 		/* modelled after NTAS 3.51 reply */
 		SSVAL(p,usri11_priv,
-			(get_current_uid(conn) == sec_initial_uid())?
+			(get_conn_uid(conn) == sec_initial_uid())?
 			USER_PRIV_ADMIN:USER_PRIV_USER);
 		SIVAL(p,usri11_auth_flags,AF_OP_PRINT);		/* auth flags */
 		SIVALS(p,usri11_password_age,-1);		/* password age */
@@ -4282,7 +4282,7 @@ static bool api_RNetUserGetInfo(struct smbd_server_connection *sconn,
 		memset(p+22,' ',16);	/* password */
 		SIVALS(p,38,-1);		/* password age */
 		SSVAL(p,42,
-			(get_current_uid(conn) == sec_initial_uid())?
+			(get_conn_uid(conn) == sec_initial_uid())?
 			USER_PRIV_ADMIN:USER_PRIV_USER);
 		SIVAL(p,44,PTR_DIFF(p2,*rdata)); /* home dir */
 		strlcpy(p2, info->info21.home_directory.string,
@@ -4446,7 +4446,7 @@ static bool api_WWkstaUserLogon(struct smbd_server_connection *sconn,
 		PACKS(&desc,"B21",name);	/* eff. name */
 		PACKS(&desc,"B","");		/* pad */
 		PACKI(&desc,"W",
-			(get_current_uid(conn) == sec_initial_uid())?
+			(get_conn_uid(conn) == sec_initial_uid())?
 			USER_PRIV_ADMIN:USER_PRIV_USER);
 		PACKI(&desc,"D",0);		/* auth flags XXX */
 		PACKI(&desc,"W",0);		/* num logons */

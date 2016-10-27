@@ -2513,7 +2513,9 @@ static void call_trans2findfirst(connection_struct *conn,
 	struct smbd_server_connection *sconn = req->sconn;
 	uint32_t ucf_flags = (UCF_SAVE_LCOMP | UCF_ALWAYS_ALLOW_WCARD_LCOMP);
 	bool backup_priv = false;
-	bool as_root = false;
+	bool forced_root = false;
+	bool impersonate_root = false;
+	const struct security_unix_token *current_user_ut = get_current_utok(conn);
 
 	if (total_params < 13) {
 		reply_nterror(req, NT_STATUS_INVALID_PARAMETER);
@@ -2527,7 +2529,7 @@ static void call_trans2findfirst(connection_struct *conn,
 	close_if_end = (findfirst_flags & FLAG_TRANS2_FIND_CLOSE_IF_END);
 	requires_resume_key = (findfirst_flags & FLAG_TRANS2_FIND_REQUIRE_RESUME);
 	backup_priv = ((findfirst_flags & FLAG_TRANS2_FIND_BACKUP_INTENT) &&
-				security_token_has_privilege(get_current_nttok(conn),
+				security_token_has_privilege(get_saved_conn_nttok(),
 						SEC_PRIV_BACKUP));
 
 	info_level = SVAL(params,6);
@@ -2578,8 +2580,12 @@ close_if_end = %d requires_resume_key = %d backup_priv = %d level = 0x%x, max_da
 	}
 
 	if (backup_priv) {
-		become_root();
-		as_root = true;
+		if (current_user_ut->uid != 0) {
+			become_root();
+			impersonate_root = true;
+		}
+		forced_root = true;
+		smb_forced_root_inc();
 		ntstatus = filename_convert_with_privilege(ctx,
 				conn,
 				req,
@@ -2854,7 +2860,10 @@ total_data=%u (should be %u)\n", (unsigned int)total_data, (unsigned int)IVAL(pd
 	}
  out:
 
-	if (as_root) {
+	if (forced_root) {
+		smb_forced_root_dec();
+	}
+	if (impersonate_root) {
 		unbecome_root();
 	}
 
@@ -2908,7 +2917,9 @@ static void call_trans2findnext(connection_struct *conn,
 	struct dptr_struct *dirptr;
 	struct smbd_server_connection *sconn = req->sconn;
 	bool backup_priv = false; 
-	bool as_root = false;
+	bool forced_root = false;
+	bool impersonate_root = false;
+	const struct security_unix_token *current_user_ut = get_current_utok(conn);
 
 	if (total_params < 13) {
 		reply_nterror(req, NT_STATUS_INVALID_PARAMETER);
@@ -3086,8 +3097,12 @@ total_data=%u (should be %u)\n", (unsigned int)total_data, (unsigned int)IVAL(pd
 	out_of_space = False;
 
 	if (backup_priv) {
-		become_root();
-		as_root = true;
+		if (current_user_ut->uid != 0) {
+			become_root();
+			impersonate_root = true;
+		}
+		forced_root = true;
+		smb_forced_root_inc();
 	}
 
 	/*
@@ -3189,8 +3204,11 @@ total_data=%u (should be %u)\n", (unsigned int)total_data, (unsigned int)IVAL(pd
 		dptr_close(sconn, &dptr_num); /* This frees up the saved mask */
 	}
 
-	if (as_root) {
+	if (impersonate_root)
 		unbecome_root();
+
+	if (forced_root) {
+		smb_forced_root_dec();
 	}
 
 	/* Set up the return parameter block */
@@ -3585,7 +3603,7 @@ cBytesSector=%u, cUnitTotal=%u, cUnitAvail=%d\n", (unsigned int)bsize, (unsigned
 			fsp.fnum = FNUM_FIELD_INVALID;
 
 			/* access check */
-			if (get_current_uid(conn) != 0) {
+			if (get_conn_uid(conn) != 0) {
 				DEBUG(0,("get_user_quota: access_denied "
 					 "service [%s] user [%s]\n",
 					 lp_servicename(talloc_tos(), SNUM(conn)),
@@ -4104,7 +4122,7 @@ static void call_trans2setfsinfo(connection_struct *conn,
 				ZERO_STRUCT(quotas);
 
 				/* access check */
-				if ((get_current_uid(conn) != 0) || !CAN_WRITE(conn)) {
+				if ((get_conn_uid(conn) != 0) || !CAN_WRITE(conn)) {
 					DEBUG(0,("set_user_quota: access_denied service [%s] user [%s]\n",
 						 lp_servicename(talloc_tos(), SNUM(conn)),
 						 conn->session_info->unix_info->unix_name));

@@ -383,6 +383,8 @@ static bool set_ea_dos_attribute(connection_struct *conn,
 	struct xattr_DOSATTRIB dosattrib;
 	enum ndr_err_code ndr_err;
 	DATA_BLOB blob;
+	bool impersonate_root = false;
+	const struct security_unix_token *current_user_ut = get_current_utok(conn);
 
 	ZERO_STRUCT(dosattrib);
 	ZERO_STRUCT(blob);
@@ -451,13 +453,17 @@ static bool set_ea_dos_attribute(connection_struct *conn,
 			return false;
 		}
 
-		become_root();
+		if (current_user_ut->uid != 0) {
+			become_root();
+			impersonate_root = true;
+		}
 		if (SMB_VFS_FSETXATTR(fsp,
 				     SAMBA_XATTR_DOS_ATTRIB, blob.data,
 				     blob.length, 0) == 0) {
 			ret = true;
 		}
-		unbecome_root();
+		if (impersonate_root)
+			unbecome_root();
 		if (need_close) {
 			close_file(NULL, fsp, NORMAL_CLOSE);
 		}
@@ -659,6 +665,8 @@ int file_set_dosmode(connection_struct *conn, struct smb_filename *smb_fname,
 	files_struct *fsp = NULL;
 	bool need_close = false;
 	NTSTATUS status;
+	bool impersonate_root = false;
+	const struct security_unix_token *current_user_ut = get_current_utok(conn);
 
 	if (!CAN_WRITE(conn)) {
 		errno = EROFS;
@@ -823,9 +831,13 @@ int file_set_dosmode(connection_struct *conn, struct smb_filename *smb_fname,
 		return -1;
 	}
 
-	become_root();
+	if (current_user_ut->uid != 0) {
+		become_root();
+		impersonate_root = false;
+	}
 	ret = SMB_VFS_FCHMOD(fsp, unixmode);
-	unbecome_root();
+	if (impersonate_root)
+		unbecome_root();
 	if (need_close) {
 		close_file(NULL, fsp, NORMAL_CLOSE);
 	}
@@ -936,6 +948,8 @@ int file_ntimes(connection_struct *conn, const struct smb_filename *smb_fname,
 		struct smb_file_time *ft)
 {
 	int ret = -1;
+	bool impersonate_root = false;
+	const struct security_unix_token *current_user_ut = get_current_utok(conn);
 
 	errno = 0;
 
@@ -980,9 +994,13 @@ int file_ntimes(connection_struct *conn, const struct smb_filename *smb_fname,
 	/* Check if we have write access. */
 	if (can_write_to_file(conn, smb_fname)) {
 		/* We are allowed to become root and change the filetime. */
-		become_root();
+		if (current_user_ut->uid != 0) {
+			become_root();
+			impersonate_root = true;
+		}
 		ret = SMB_VFS_NTIMES(conn, smb_fname, ft);
-		unbecome_root();
+		if (impersonate_root)
+			unbecome_root();
 	}
 
 	return ret;

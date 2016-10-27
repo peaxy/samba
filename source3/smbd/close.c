@@ -298,7 +298,7 @@ static NTSTATUS close_remove_share_mode(files_struct *fsp,
 		/* Initial delete on close was set and no one else
 		 * wrote a real delete on close. */
 
-		if (get_current_vuid(conn) != fsp->vuid) {
+		if (get_saved_conn_vuid(conn) != fsp->vuid) {
 			become_user(conn, fsp->vuid);
 			became_user = True;
 		}
@@ -1077,7 +1077,7 @@ static NTSTATUS close_directory(struct smb_request *req, files_struct *fsp,
 		 * directories we don't care if anyone else
 		 * wrote a real delete on close. */
 
-		if (get_current_vuid(fsp->conn) != fsp->vuid) {
+		if (get_saved_conn_vuid(fsp->conn) != fsp->vuid) {
 			become_user(fsp->conn, fsp->vuid);
 			became_user = True;
 		}

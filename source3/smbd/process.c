@@ -1451,6 +1451,7 @@ static connection_struct *switch_message(uint8_t type, struct smb_request *req)
 	struct smbXsrv_connection *xconn = req->xconn;
 	NTTIME now = timeval_to_nttime(&req->request_time);
 	struct smbXsrv_session *session = NULL;
+	bool impersonate_root = false;
 	NTSTATUS status;
 
 	errno = 0;
@@ -1580,9 +1581,16 @@ static connection_struct *switch_message(uint8_t type, struct smb_request *req)
 			reply_nterror(req, NT_STATUS_ACCESS_DENIED);
 			return conn;
 		}
+		/*
+		 * HFL-8681- Also become root user for all AS_USER requests
+		 */
+		save_conn();
+		become_root();
+		impersonate_root = true;
 	} else {
 		/* This call needs to be run as root */
 		change_to_root_user();
+		clear_conn();
 	}
 
 	/* load service specific parameters */
@@ -1599,6 +1607,10 @@ static connection_struct *switch_message(uint8_t type, struct smb_request *req)
 					smb_fn_name(type),
 					(unsigned long long)req->mid));
 				reply_nterror(req, NT_STATUS_ACCESS_DENIED);
+				if (impersonate_root) {
+					unbecome_root();
+					clear_conn();
+				}
 				return conn;
 			}
 		}
@@ -1607,6 +1619,10 @@ static connection_struct *switch_message(uint8_t type, struct smb_request *req)
 					 (flags & (AS_USER|DO_CHDIR)
 					  ?True:False),False)) {
 			reply_nterror(req, NT_STATUS_ACCESS_DENIED);
+			if (impersonate_root) {
+				unbecome_root();
+				clear_conn();
+			}
 			return conn;
 		}
 		conn->num_smb_operations++;
@@ -1622,6 +1638,10 @@ static connection_struct *switch_message(uint8_t type, struct smb_request *req)
 
 		if (!change_to_guest()) {
 			reply_nterror(req, NT_STATUS_ACCESS_DENIED);
+			if (impersonate_root) {
+				unbecome_root();
+				clear_conn();
+			}
 			return conn;
 		}
 
@@ -1629,6 +1649,10 @@ static connection_struct *switch_message(uint8_t type, struct smb_request *req)
 							 talloc_tos());
 		if (raddr == NULL) {
 			reply_nterror(req, NT_STATUS_NO_MEMORY);
+			if (impersonate_root) {
+				unbecome_root();
+				clear_conn();
+			}
 			return conn;
 		}
 
@@ -1642,11 +1666,19 @@ static connection_struct *switch_message(uint8_t type, struct smb_request *req)
 
 		if (!ok) {
 			reply_nterror(req, NT_STATUS_ACCESS_DENIED);
+			if (impersonate_root) {
+				unbecome_root();
+				clear_conn();
+			}
 			return conn;
 		}
 	}
 
 	smb_messages[type].fn(req);
+	if (impersonate_root) {
+		unbecome_root();
+		clear_conn();
+	}
 	return req->conn;
 }
 

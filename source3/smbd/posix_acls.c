@@ -1190,7 +1190,7 @@ NTSTATUS unpack_nt_owners(struct connection_struct *conn,
 			if (lp_force_unknown_acl_user(SNUM(conn))) {
 				/* this allows take ownership to work
 				 * reasonably */
-				*puser = get_current_uid(conn);
+				*puser = get_conn_uid(conn);
 			} else {
 				DEBUG(3,("unpack_nt_owners: unable to validate"
 					 " owner sid for %s\n",
@@ -1213,7 +1213,7 @@ NTSTATUS unpack_nt_owners(struct connection_struct *conn,
 			if (lp_force_unknown_acl_user(SNUM(conn))) {
 				/* this allows take group ownership to work
 				 * reasonably */
-				*pgrp = get_current_gid(conn);
+				*pgrp = get_conn_gid(conn);
 			} else {
 				DEBUG(3,("unpack_nt_owners: unable to validate"
 					 " group sid.\n"));
@@ -1260,15 +1260,15 @@ static bool uid_entry_in_group(connection_struct *conn, canon_ace *uid_ace, cano
 	 * if it's the current user, we already have the unix token
 	 * and don't need to do the complex user_in_group_sid() call
 	 */
-	if (uid_ace->unix_ug.id == get_current_uid(conn)) {
+	if (uid_ace->unix_ug.id == get_conn_uid(conn)) {
 		const struct security_unix_token *curr_utok = NULL;
 		size_t i;
 
-		if (group_ace->unix_ug.id == get_current_gid(conn)) {
+		if (group_ace->unix_ug.id == get_conn_gid(conn)) {
 			return True;
 		}
 
-		curr_utok = get_current_utok(conn);
+		curr_utok = get_conn_utok(conn);
 		for (i=0; i < curr_utok->ngroups; i++) {
 			if (group_ace->unix_ug.id == curr_utok->groups[i]) {
 				return True;
@@ -2928,7 +2928,7 @@ static canon_ace *canonicalise_acl(struct connection_struct *conn,
 bool current_user_in_group(connection_struct *conn, gid_t gid)
 {
 	int i;
-	const struct security_unix_token *utok = get_current_utok(conn);
+	const struct security_unix_token *utok = get_conn_utok(conn);
 
 	for (i = 0; i < utok->ngroups; i++) {
 		if (utok->groups[i] == gid) {
@@ -2986,6 +2986,8 @@ static bool set_canon_ace_list(files_struct *fsp,
 	SMB_ACL_TYPE_T the_acl_type = (default_ace ? SMB_ACL_TYPE_DEFAULT : SMB_ACL_TYPE_ACCESS);
 	bool needs_mask = False;
 	mode_t mask_perms = 0;
+	bool impersonate_root = false;
+	const struct security_unix_token *current_user_ut = get_current_utok(conn);
 
 	/* Use the psbuf that was passed in. */
 	if (psbuf != &fsp->fsp_name->st) {
@@ -3156,12 +3158,15 @@ static bool set_canon_ace_list(files_struct *fsp,
 					 "control on and current user in file "
 					 "%s primary group.\n",
 					 fsp_str_dbg(fsp)));
-
-				become_root();
+				if (current_user_ut->uid != 0) {
+					become_root();
+					impersonate_root = true;
+				}
 				sret = SMB_VFS_SYS_ACL_SET_FILE(conn,
 				    fsp->fsp_name->base_name, the_acl_type,
 				    the_acl);
-				unbecome_root();
+				if (impersonate_root)
+					unbecome_root();
 				if (sret == 0) {
 					ret = True;	
 				}
@@ -3195,9 +3200,13 @@ static bool set_canon_ace_list(files_struct *fsp,
 					 "%s primary group.\n",
 					 fsp_str_dbg(fsp)));
 
-				become_root();
+				if (current_user_ut->uid != 0) {
+					become_root();
+					impersonate_root = true;
+				}
 				sret = SMB_VFS_SYS_ACL_SET_FD(fsp, the_acl);
-				unbecome_root();
+				if (impersonate_root)
+					unbecome_root();
 				if (sret == 0) {
 					ret = True;
 				}
@@ -3874,6 +3883,8 @@ NTSTATUS posix_get_nt_acl(struct connection_struct *conn, const char *name,
 NTSTATUS try_chown(files_struct *fsp, uid_t uid, gid_t gid)
 {
 	NTSTATUS status;
+	bool impersonate_root = false;
+	const struct security_unix_token *current_user_ut = get_current_utok(fsp->conn);
 
 	if(!CAN_WRITE(fsp->conn)) {
 		return NT_STATUS_MEDIA_WRITE_PROTECTED;
@@ -3888,17 +3899,17 @@ NTSTATUS try_chown(files_struct *fsp, uid_t uid, gid_t gid)
 	/* Case (2) / (3) */
 	if (lp_enable_privileges()) {
 		bool has_take_ownership_priv = security_token_has_privilege(
-						get_current_nttok(fsp->conn),
+						get_saved_conn_nttok(),
 						SEC_PRIV_TAKE_OWNERSHIP);
 		bool has_restore_priv = security_token_has_privilege(
-						get_current_nttok(fsp->conn),
+						get_saved_conn_nttok(),
 						SEC_PRIV_RESTORE);
 
 		if (has_restore_priv) {
 			; /* Case (2) */
 		} else if (has_take_ownership_priv) {
 			/* Case (3) */
-			if (uid == get_current_uid(fsp->conn)) {
+			if (uid == get_conn_uid(fsp->conn)) {
 				gid = (gid_t)-1;
 			} else {
 				has_take_ownership_priv = false;
@@ -3906,9 +3917,13 @@ NTSTATUS try_chown(files_struct *fsp, uid_t uid, gid_t gid)
 		}
 
 		if (has_take_ownership_priv || has_restore_priv) {
-			become_root();
+			if (current_user_ut->uid != 0) {
+				become_root();
+				impersonate_root = true;
+			}
 			status = vfs_chown_fsp(fsp, uid, gid);
-			unbecome_root();
+			if (impersonate_root)
+				unbecome_root();
 			return status;
 		}
 	}
@@ -3922,14 +3937,18 @@ NTSTATUS try_chown(files_struct *fsp, uid_t uid, gid_t gid)
 	   and also copes with the case where the SID in a take ownership ACL is
 	   a local SID on the users workstation
 	*/
-	if (uid != get_current_uid(fsp->conn)) {
+	if (uid != get_conn_uid(fsp->conn)) {
 		return NT_STATUS_ACCESS_DENIED;
 	}
 
-	become_root();
+	if (current_user_ut->uid != 0) {
+		become_root();
+		impersonate_root = true;
+	}
 	/* Keep the current file gid the same. */
 	status = vfs_chown_fsp(fsp, uid, (gid_t)-1);
-	unbecome_root();
+	if (impersonate_root)
+		unbecome_root();
 
 	return status;
 }
@@ -3954,6 +3973,8 @@ NTSTATUS set_posix_perm_for_nt_acl(
 	bool set_acl_as_root = false;
 	bool add_extra_aces = false;
 	NTSTATUS status;
+	bool impersonate_root = false;
+	const struct security_unix_token *current_user_ut = get_current_utok(conn);
 
 	/* unpack acl to a separate list without adding extra aces in order to extract the posix_perm */
 	add_extra_aces = false;
@@ -4034,11 +4055,15 @@ NTSTATUS set_posix_perm_for_nt_acl(
 			 fsp_str_dbg(fsp), (unsigned int)posix_perms));
 
 		if (set_acl_as_root || (posix_perms & S_SETGID)) {
-			become_root();
+			if (current_user_ut->uid != 0) {
+				become_root();
+				impersonate_root = true;
+			}
 		}
 		sret = SMB_VFS_CHMOD(conn, fsp->fsp_name->base_name, posix_perms);
 		if (set_acl_as_root || (posix_perms & S_SETGID)) {
-			unbecome_root();
+			if (impersonate_root)
+				unbecome_root();
 		}
 		if(sret == -1) {
 			if (acl_group_override(conn, fsp->fsp_name)) {
@@ -4048,11 +4073,15 @@ NTSTATUS set_posix_perm_for_nt_acl(
 					 "Override chmod\n",
 					 fsp_str_dbg(fsp)));
 
-				become_root();
+				if (current_user_ut->uid != 0) {
+					become_root();
+					impersonate_root = true;
+				}
 				sret = SMB_VFS_CHMOD(conn,
 				    fsp->fsp_name->base_name,
 				    posix_perms);
-				unbecome_root();
+				if (impersonate_root)
+					unbecome_root();
 			}
 
 			if (sret == -1) {
@@ -4102,6 +4131,8 @@ NTSTATUS set_nt_acl(files_struct *fsp, uint32_t security_info_sent, const struct
 	struct security_descriptor *psd = NULL;
 	bool add_extra_aces = false;
 	bool reject_extra_aces = false;
+	bool impersonate_root = false;
+	const struct security_unix_token *current_user_ut = get_current_utok(conn);
 
 	DEBUG(10,("set_nt_acl: called for file %s\n",
 		  fsp_str_dbg(fsp)));
@@ -4327,12 +4358,16 @@ NTSTATUS set_nt_acl(files_struct *fsp, uint32_t security_info_sent, const struct
 
 	if (acl_perms && file_ace_list) {
 		if (set_acl_as_root) {
-			become_root();
+			if (current_user_ut->uid != 0) {
+				become_root();
+				impersonate_root = true;
+			}
 		}
 		ret = set_canon_ace_list(fsp, file_ace_list, false,
 					 &fsp->fsp_name->st, &acl_set_support);
 		if (set_acl_as_root) {
-			unbecome_root();
+			if (impersonate_root)
+				unbecome_root();
 		}
 		if (acl_set_support && ret == false) {
 			DEBUG(3,("set_nt_acl: failed to set file acl on file "
@@ -4350,13 +4385,17 @@ NTSTATUS set_nt_acl(files_struct *fsp, uint32_t security_info_sent, const struct
 	if (acl_perms && acl_set_support && fsp->is_directory) {
 		if (dir_ace_list) {
 			if (set_acl_as_root) {
-				become_root();
+				if (current_user_ut->uid != 0) {
+					become_root();
+					impersonate_root = true;
+				}
 			}
 			ret = set_canon_ace_list(fsp, dir_ace_list, true,
 						 &fsp->fsp_name->st,
 						 &acl_set_support);
 			if (set_acl_as_root) {
-				unbecome_root();
+				if (impersonate_root)
+					unbecome_root();
 			}
 			if (ret == false) {
 				DEBUG(3,("set_nt_acl: failed to set default "
@@ -4376,12 +4415,16 @@ NTSTATUS set_nt_acl(files_struct *fsp, uint32_t security_info_sent, const struct
 			 */
 
 			if (set_acl_as_root) {
-				become_root();
+				if (current_user_ut->uid != 0) {
+					become_root();
+					impersonate_root = true;
+				}
 			}
 			sret = SMB_VFS_SYS_ACL_DELETE_DEF_FILE(conn,
 			    fsp->fsp_name->base_name);
 			if (set_acl_as_root) {
-				unbecome_root();
+				if (impersonate_root)
+					unbecome_root();
 			}
 			if (sret == -1) {
 				if (acl_group_override(conn, fsp->fsp_name)) {
@@ -4391,12 +4434,16 @@ NTSTATUS set_nt_acl(files_struct *fsp, uint32_t security_info_sent, const struct
 						 "Override delete_def_acl\n",
 						 fsp_str_dbg(fsp)));
 
-					become_root();
+					if (current_user_ut->uid != 0) {
+						become_root();
+						impersonate_root = true;
+					}
 					sret =
 					    SMB_VFS_SYS_ACL_DELETE_DEF_FILE(
 						    conn,
 						    fsp->fsp_name->base_name);
-					unbecome_root();
+					if (impersonate_root)
+						unbecome_root();
 				}
 
 				if (sret == -1) {
@@ -4419,14 +4466,18 @@ NTSTATUS set_nt_acl(files_struct *fsp, uint32_t security_info_sent, const struct
 
 	if (acl_set_support) {
 		if (set_acl_as_root) {
-			become_root();
+			if (current_user_ut->uid != 0) {
+				become_root();
+				impersonate_root = true;
+			}
 		}
 		store_inheritance_attributes(fsp,
 				file_ace_list,
 				dir_ace_list,
 				psd->type);
 		if (set_acl_as_root) {
-			unbecome_root();
+			if (impersonate_root)
+				unbecome_root();
 		}
 
 		DEBUG(10, (__location__ ": process set custom PERM for POSIX ACL\n"));

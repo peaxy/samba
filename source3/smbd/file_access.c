@@ -71,7 +71,7 @@ bool can_delete_file_in_directory(connection_struct *conn,
 		ret = false;
 		goto out;
 	}
-	if (get_current_uid(conn) == (uid_t)0) {
+	if (get_conn_uid(conn) == (uid_t)0) {
 		/* I'm sorry sir, I didn't know you were root... */
 		ret = true;
 		goto out;
@@ -96,9 +96,9 @@ bool can_delete_file_in_directory(connection_struct *conn,
 		 * or the owner of the directory as we have no possible
 		 * chance of deleting. Otherwise, go on and check the ACL.
 		 */
-		if ((get_current_uid(conn) !=
+		if ((get_conn_uid(conn) !=
 			smb_fname_parent->st.st_ex_uid) &&
-		    (get_current_uid(conn) != smb_fname->st.st_ex_uid)) {
+		    (get_conn_uid(conn) != smb_fname->st.st_ex_uid)) {
 			DEBUG(10,("can_delete_file_in_directory: not "
 				  "owner of file %s or directory %s",
 				  smb_fname_str_dbg(smb_fname),

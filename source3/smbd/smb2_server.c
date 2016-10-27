@@ -2003,6 +2003,7 @@ NTSTATUS smbd_smb2_request_dispatch(struct smbd_smb2_request *req)
 	bool signing_required = false;
 	bool encryption_desired = false;
 	bool encryption_required = false;
+	bool impersonate_root = false;
 
 	inhdr = SMBD_SMB2_IN_HDR_PTR(req);
 
@@ -2262,8 +2263,16 @@ NTSTATUS smbd_smb2_request_dispatch(struct smbd_smb2_request *req)
 		SMB_ASSERT(call->fileid_ofs == 0);
 		/* This call needs to be run as root */
 		change_to_root_user();
+		clear_conn();
 	} else {
 		SMB_ASSERT(call->need_tcon);
+		/*
+		 * HFL-8681 - workaround the need to switch to root multitple times.
+		 * We also become root for normal operation.
+		 */
+		save_conn();
+		become_root();
+		impersonate_root = true;
 	}
 
 #define _INBYTES(_r) \
@@ -2402,6 +2411,10 @@ NTSTATUS smbd_smb2_request_dispatch(struct smbd_smb2_request *req)
 	default:
 		return_value = smbd_smb2_request_error(req, NT_STATUS_INVALID_PARAMETER);
 		break;
+	}
+	if (impersonate_root) {
+		unbecome_root();
+		clear_conn();
 	}
 	return return_value;
 }

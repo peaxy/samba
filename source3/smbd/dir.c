@@ -1358,7 +1358,7 @@ static bool user_can_read_file(connection_struct *conn,
 	 * as make test uses a single user context.
 	 */
 
-	if (get_current_uid(conn) == (uid_t)0) {
+	if (get_conn_uid(conn) == (uid_t)0 && (is_smb_forced_root())) {
 		return True;
 	}
 
@@ -1401,7 +1401,7 @@ static bool user_can_read_file(connection_struct *conn,
         }
 
 	status = se_file_access_check(sd,
-				get_current_nttok(conn),
+				get_saved_conn_nttok(),
 				false,
 				access_mask,
 				&rejected_mask);
@@ -1433,7 +1433,7 @@ static bool user_can_write_file(connection_struct *conn,
 	 * as make test uses a single user context.
 	 */
 
-	if (get_current_uid(conn) == (uid_t)0) {
+	if (get_conn_uid(conn) == (uid_t)0) {
 		return True;
 	}
 
@@ -1461,7 +1461,7 @@ static bool file_is_special(connection_struct *conn,
 	 * as make test uses a single user context.
 	 */
 
-	if (get_current_uid(conn) == (uid_t)0) {
+	if (get_conn_uid(conn) == (uid_t)0) {
 		return False;
 	}
 

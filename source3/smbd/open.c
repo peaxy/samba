@@ -80,6 +80,9 @@ NTSTATUS smbd_check_access_rights(struct connection_struct *conn,
 	uint32_t rejected_share_access;
 	uint32_t rejected_mask = access_mask;
 	uint32_t do_not_check_mask = 0;
+	bool impersonate_root = false;
+	const struct security_unix_token *current_user_ut = get_current_utok(conn);
+	const struct security_token *eff_nttok = NULL;
 
 	rejected_share_access = access_mask & ~(conn->share_access);
 
@@ -92,7 +95,8 @@ NTSTATUS smbd_check_access_rights(struct connection_struct *conn,
 		return NT_STATUS_ACCESS_DENIED;
 	}
 
-	if (!use_privs && get_current_uid(conn) == (uid_t)0) {
+	if (!use_privs && get_current_uid(conn) == (uid_t)0 &&
+		(is_smb_forced_root())) {
 		/* I'm sorry sir, I didn't know you were root... */
 		DEBUG(10,("smbd_check_access_rights: root override "
 			"on %s. Granting 0x%x\n",
@@ -119,10 +123,17 @@ NTSTATUS smbd_check_access_rights(struct connection_struct *conn,
 		return NT_STATUS_OK;
 	}
 
+	if (current_user_ut->uid != 0) {
+		become_root();
+		impersonate_root = true;
+	}
 	status = SMB_VFS_GET_NT_ACL(conn, smb_fname->base_name,
 			(SECINFO_OWNER |
 			SECINFO_GROUP |
 			 SECINFO_DACL), talloc_tos(), &sd);
+
+	if (impersonate_root)
+		unbecome_root();
 
 	if (!NT_STATUS_IS_OK(status)) {
 		DEBUG(10, ("smbd_check_access_rights: Could not get acl "
@@ -160,8 +171,16 @@ NTSTATUS smbd_check_access_rights(struct connection_struct *conn,
 		do_not_check_mask |= FILE_EXECUTE;
 	}
 
+	/*
+	 * switch back to the security token used during mount before access check
+	 */
+	if (!(is_smb_forced_root()) && current_user_ut->uid == 0) {
+		eff_nttok = get_saved_conn_nttok();
+	} else {
+		eff_nttok = get_current_nttok(conn);
+	}
 	status = se_file_access_check(sd,
-				get_current_nttok(conn),
+				eff_nttok,
 				use_privs,
 				(access_mask & ~do_not_check_mask),
 				&rejected_mask);
@@ -243,6 +262,9 @@ static NTSTATUS check_parent_access(struct connection_struct *conn,
 	char *parent_dir = NULL;
 	struct security_descriptor *parent_sd = NULL;
 	uint32_t access_granted = 0;
+	bool impersonate_root = false;
+	const struct security_unix_token *current_user_ut = get_current_utok(conn);
+	const struct security_token *eff_nttok = NULL;
 
 	if (!parent_dirname(talloc_tos(),
 				smb_fname->base_name,
@@ -251,7 +273,7 @@ static NTSTATUS check_parent_access(struct connection_struct *conn,
 		return NT_STATUS_NO_MEMORY;
 	}
 
-	if (get_current_uid(conn) == (uid_t)0) {
+	if (get_current_uid(conn) == (uid_t)0 && (is_smb_forced_root())) {
 		/* I'm sorry sir, I didn't know you were root... */
 		DEBUG(10,("check_parent_access: root override "
 			"on %s. Granting 0x%x\n",
@@ -260,11 +282,19 @@ static NTSTATUS check_parent_access(struct connection_struct *conn,
 		return NT_STATUS_OK;
 	}
 
+	if (current_user_ut->uid != 0) {
+		become_root();
+		impersonate_root = true;
+	}
+
 	status = SMB_VFS_GET_NT_ACL(conn,
 				parent_dir,
 				SECINFO_DACL,
 				    talloc_tos(),
 				&parent_sd);
+
+	if (impersonate_root)
+		unbecome_root();
 
 	if (!NT_STATUS_IS_OK(status)) {
 		DEBUG(5,("check_parent_access: SMB_VFS_GET_NT_ACL failed for "
@@ -272,6 +302,15 @@ static NTSTATUS check_parent_access(struct connection_struct *conn,
 			parent_dir,
 			nt_errstr(status)));
 		return status;
+	}
+
+	/*
+	 * switch back to account used during mount before perform NTACL access check
+	 */
+	if (!(is_smb_forced_root()) && current_user_ut->uid == 0) {
+		eff_nttok = get_saved_conn_nttok();
+	} else {
+		eff_nttok = get_current_nttok(conn);
 	}
 
  	/*
@@ -285,10 +324,11 @@ static NTSTATUS check_parent_access(struct connection_struct *conn,
 	 * owner WRITE_DAC and READ_CONTROL.
 	 */
 	status = se_file_access_check(parent_sd,
-				get_current_nttok(conn),
+				eff_nttok,
 				false,
 				(access_mask & ~FILE_READ_ATTRIBUTES),
 				&access_granted);
+
 	if(!NT_STATUS_IS_OK(status)) {
 		DEBUG(5,("check_parent_access: access check "
 			"on directory %s for "
@@ -447,6 +487,8 @@ void change_file_owner_to_parent(connection_struct *conn,
 {
 	struct smb_filename *smb_fname_parent;
 	int ret;
+	bool impersonate_root = false;
+	const struct security_unix_token *current_user_ut = get_current_utok(conn);
 
 	smb_fname_parent = synthetic_smb_fname(talloc_tos(), inherit_from_dir,
 					       NULL, NULL);
@@ -474,9 +516,13 @@ void change_file_owner_to_parent(connection_struct *conn,
 		return;
 	}
 
-	become_root();
+	if (current_user_ut->uid != 0) {
+		become_root();
+		impersonate_root = true;
+	}
 	ret = SMB_VFS_FCHOWN(fsp, smb_fname_parent->st.st_ex_uid, (gid_t)-1);
-	unbecome_root();
+	if (impersonate_root)
+		unbecome_root();
 	if (ret == -1) {
 		DEBUG(0,("change_file_owner_to_parent: failed to fchown "
 			 "file %s to parent directory uid %u. Error "
@@ -505,6 +551,8 @@ NTSTATUS change_dir_owner_to_parent(connection_struct *conn,
 	TALLOC_CTX *ctx = talloc_tos();
 	NTSTATUS status = NT_STATUS_OK;
 	int ret;
+	bool impersonate_root = false;
+	const struct security_unix_token *current_user_ut = get_current_utok(conn);
 
 	smb_fname_parent = synthetic_smb_fname(ctx, inherit_from_dir,
 					       NULL, NULL);
@@ -582,10 +630,14 @@ NTSTATUS change_dir_owner_to_parent(connection_struct *conn,
 		goto chdir;
 	}
 
-	become_root();
+	if (current_user_ut->uid != 0) {
+		become_root();
+		impersonate_root = true;
+	}
 	ret = SMB_VFS_LCHOWN(conn, ".", smb_fname_parent->st.st_ex_uid,
 			    (gid_t)-1);
-	unbecome_root();
+	if (impersonate_root)
+		unbecome_root();
 	if (ret == -1) {
 		status = map_nt_error_from_unix(errno);
 		DEBUG(10,("change_dir_owner_to_parent: failed to chown "
@@ -655,36 +707,18 @@ static NTSTATUS fd_open_atomic(struct connection_struct *conn,
 {
 	NTSTATUS status = NT_STATUS_UNSUCCESSFUL;
 	bool file_existed = VALID_STAT(fsp->fsp_name->st);
-	const struct security_unix_token *current_user_ut;
-
-	current_user_ut = get_current_utok(conn);
-	if (!current_user_ut) {
-		DEBUG(3, (__location__ ": failed to retrieve current_user unix token\n"));
-		return NT_STATUS_ACCESS_DENIED;
-	}
 
 	*file_created = false;
 
 	if (!(flags & O_CREAT)) {
-
-		/*
-		 * Always open the file as root. Allow file access check to be done
-		 * based on the content of NT ACL.
-		 */
-		become_root();
-
 		/*
 		 * We're not creating the file, just pass through.
 		 */
 		status = fd_open(conn, fsp, flags, mode);
-
-		unbecome_root();
-
 		return status;
 	}
 
 	if (flags & O_EXCL) {
-		bool impersonate_root = false;
 		struct smb_filename *smb_parent_dname;
 
 		smb_parent_dname = get_stat_info(conn, parent_dir);
@@ -692,14 +726,6 @@ static NTSTATUS fd_open_atomic(struct connection_struct *conn,
 			DEBUG(3, (__location__ ": failed to retrieve stat info for path %s\n",
 					parent_dir));
 			return NT_STATUS_ACCESS_DENIED;
-		}
-
-		/*
-		 * Become root to ensure the open succeeded.
-		 */
-		if (current_user_ut->uid != 0) {
-			become_root();
-			impersonate_root = true;
 		}
 
 		/*
@@ -712,10 +738,6 @@ static NTSTATUS fd_open_atomic(struct connection_struct *conn,
 		 * NT_STATUS_OK, we *know* we created this file.
 		 */
 		*file_created = NT_STATUS_IS_OK(status);
-
-		if (impersonate_root)
-			unbecome_root();
-
 		free_stat_info(smb_parent_dname);
 		return status;
 	}
@@ -739,14 +761,7 @@ static NTSTATUS fd_open_atomic(struct connection_struct *conn,
 			/* Just try open, do not create. */
 			curr_flags &= ~(O_CREAT);
 
-			/*
-			 * ensure that the open does not fail with perm error.
-			 * Let the access check be done solely on the NT ACL.
-			 */
-			become_root();
 			status = fd_open(conn, fsp, curr_flags, mode);
-			unbecome_root();
-
 			if (NT_STATUS_EQUAL(status,
 					NT_STATUS_OBJECT_NAME_NOT_FOUND)) {
 				/*
@@ -760,24 +775,10 @@ static NTSTATUS fd_open_atomic(struct connection_struct *conn,
 					continue;
 			}
 		} else {
-			bool impersonate_root = false;
-
 			/* Try create exclusively, fail if it exists. */
 			curr_flags |= O_EXCL;
 
-			/*
-			 * Become root to ensure the creation succeeded.
-			 */
-			if (current_user_ut->uid != 0) {
-				become_root();
-				impersonate_root = true;
-			}
-
 			status = fd_open(conn, fsp, curr_flags, mode);
-
-			if (impersonate_root)
-				unbecome_root();
-
 			if (NT_STATUS_EQUAL(status,
 					NT_STATUS_OBJECT_NAME_COLLISION)) {
 				/*
@@ -824,13 +825,9 @@ static NTSTATUS open_file(files_struct *fsp,
 	int accmode = (flags & O_ACCMODE);
 	int local_flags = flags;
 	bool file_existed = VALID_STAT(fsp->fsp_name->st);
-	const struct security_unix_token *current_user_ut;
-
-	current_user_ut = get_current_utok(conn);
-	if (!current_user_ut) {
-		DEBUG(3, (__location__ ": failed to retrieve current_user unix token\n"));
-		return NT_STATUS_ACCESS_DENIED;
-	}
+	bool impersonate_root = false;
+	const struct security_unix_token *current_user_ut = get_current_utok(conn);
+	uid_t mount_uid = (uid_t)0;
 
 	fsp->fh->fd = -1;
 	errno = EPERM;
@@ -981,6 +978,12 @@ static NTSTATUS open_file(files_struct *fsp,
 		 * 	afterward.
 		 */
 
+		if (current_user_ut->uid != 0) {
+			mount_uid = current_user_ut->uid;
+			become_root();
+			impersonate_root = true;
+		}
+
 		/*
 		 * Actually do the open - if O_TRUNC is needed handle it
 		 * below under the share mode lock.
@@ -992,6 +995,8 @@ static NTSTATUS open_file(files_struct *fsp,
 			DEBUG(3,("Error opening file %s (%s) (local_flags=%d) "
 				 "(flags=%d)\n", smb_fname_str_dbg(smb_fname),
 				 nt_errstr(status),local_flags,flags));
+			if (impersonate_root)
+				unbecome_root();
 			return status;
 		}
 
@@ -1004,6 +1009,8 @@ static NTSTATUS open_file(files_struct *fsp,
 				strerror(errno) ));
 			status = map_nt_error_from_unix(errno);
 			fd_close(fsp);
+			if (impersonate_root)
+				unbecome_root();
 			return status;
 		}
 
@@ -1011,7 +1018,6 @@ static NTSTATUS open_file(files_struct *fsp,
 			/* We created this file. */
 
 			bool need_re_stat = false;
-			uid_t desired_uid;
 			gid_t desired_gid;
 			struct smb_filename *smb_parent_dname = NULL;
 
@@ -1020,7 +1026,16 @@ static NTSTATUS open_file(files_struct *fsp,
 				DEBUG(3, (__location__ ": failed to retrieve stat info for parent %s\n",
 					parent_dir));
 				fd_close(fsp);
+				if (impersonate_root)
+					unbecome_root();
 				return NT_STATUS_ACCESS_DENIED;
+			}
+
+			/*
+			 * Fetch the user security token used during mount, so we can correctly set the owner
+			 */
+			if (mount_uid == 0) {
+				mount_uid = get_conn_uid(conn);
 			}
 
 			/* Do all inheritance work after we've
@@ -1028,22 +1043,21 @@ static NTSTATUS open_file(files_struct *fsp,
 			   in the stat struct in fsp->fsp_name. */
 
 			/* make sure the owner of the file is current_user instead of root */
-			if (current_user_ut->uid != smb_fname->st.st_ex_uid ||
+			if (mount_uid != smb_fname->st.st_ex_uid ||
 			    smb_parent_dname->st.st_ex_gid != smb_fname->st.st_ex_gid) {
 
-				desired_uid = current_user_ut->uid;
 				desired_gid = smb_parent_dname->st.st_ex_gid;
 				free_stat_info(smb_parent_dname);
 
-				become_root();
-				ret = SMB_VFS_FCHOWN(fsp, desired_uid, desired_gid);
-				unbecome_root();
+				ret = SMB_VFS_FCHOWN(fsp, mount_uid, desired_gid);
 				need_re_stat = true;
 				if (ret != 0) {
 					DEBUG(3, (__location__ ": failed to fchown path %s to uid %u, gid %u. Error %s\n",
-						smb_fname->base_name, desired_uid, desired_gid,
+						smb_fname->base_name, mount_uid, desired_gid,
 						strerror(errno)));
 					fd_close(fsp);
+					if (impersonate_root)
+						unbecome_root();
 					return map_nt_error_from_unix(errno);
 				}
 			}
@@ -1082,6 +1096,8 @@ static NTSTATUS open_file(files_struct *fsp,
 		fsp->fh->fd = -1; /* What we used to call a stat open. */
 		if (!file_existed) {
 			/* File must exist for a stat open. */
+			if (impersonate_root)
+				unbecome_root();
 			return NT_STATUS_OBJECT_NAME_NOT_FOUND;
 		}
 
@@ -1108,6 +1124,8 @@ static NTSTATUS open_file(files_struct *fsp,
 				"%s returned %s\n",
 				smb_fname_str_dbg(smb_fname),
 				nt_errstr(status) ));
+			if (impersonate_root)
+				unbecome_root();
 			return status;
 		}
 	}
@@ -1121,6 +1139,8 @@ static NTSTATUS open_file(files_struct *fsp,
 	if(S_ISDIR(smb_fname->st.st_ex_mode)) {
 		fd_close(fsp);
 		errno = EISDIR;
+		if (impersonate_root)
+			unbecome_root();
 		return NT_STATUS_FILE_IS_A_DIRECTORY;
 	}
 
@@ -1151,6 +1171,10 @@ static NTSTATUS open_file(files_struct *fsp,
 		 conn->num_files_open));
 
 	errno = 0;
+
+	if (impersonate_root)
+		unbecome_root();
+
 	return NT_STATUS_OK;
 }
 
@@ -2002,7 +2026,7 @@ static NTSTATUS grant_fsp_oplock_type(struct smb_request *req,
 		}
 	}
 
-	ok = set_share_mode(lck, fsp, get_current_uid(fsp->conn),
+	ok = set_share_mode(lck, fsp, get_conn_uid(fsp->conn),
 			    req ? req->mid : 0,
 			    fsp->oplock_type,
 			    lease_idx);
@@ -2311,7 +2335,7 @@ static NTSTATUS smbd_calculate_maximum_allowed_access(
 	uint32_t access_granted;
 	NTSTATUS status;
 
-	if (!use_privs && (get_current_uid(conn) == (uid_t)0)) {
+	if (!use_privs && (get_conn_uid(conn) == (uid_t)0) && (is_smb_forced_root())) {
 		*p_access_mask |= FILE_GENERIC_ALL;
 		return NT_STATUS_OK;
 	}
@@ -2347,7 +2371,7 @@ static NTSTATUS smbd_calculate_maximum_allowed_access(
 	 * also takes care of owner WRITE_DAC and READ_CONTROL.
 	 */
 	status = se_file_access_check(sd,
-				 get_current_nttok(conn),
+				 get_saved_conn_nttok(),
 				 use_privs,
 				 (*p_access_mask & ~FILE_READ_ATTRIBUTES),
 				 &access_granted);
@@ -3411,7 +3435,7 @@ static NTSTATUS mkdir_internal(connection_struct *conn,
 	struct smb_filename *smb_parent_dname;
 	int ret;
 	const struct security_unix_token *current_user_ut;
-	uid_t desired_uid;
+	uid_t mount_uid = 0;
 	gid_t desired_gid;
 
 	current_user_ut = get_current_utok(conn);
@@ -3461,21 +3485,23 @@ static NTSTATUS mkdir_internal(connection_struct *conn,
 	 * become root to ensure the directory creation succeeded.
 	 */
 	if (current_user_ut->uid != 0) {
+		mount_uid = current_user_ut->uid;
 		become_root();
 		impersonate_root = true;
 	}
 
 	if (SMB_VFS_MKDIR(conn, smb_dname->base_name, mode) != 0) {
-		if (impersonate_root)
+		if (impersonate_root) {
 			unbecome_root();
+		}
 		free_stat_info(smb_parent_dname);
-
+		if (impersonate_root) {
+			unbecome_root();
+		}
 		return map_nt_error_from_unix(errno);
 	}
 
-	if (impersonate_root)
-		unbecome_root();
-
+	desired_gid = smb_parent_dname->st.st_ex_gid;
 	free_stat_info(smb_parent_dname);
 
 	/* Ensure we're checking for a symlink here.... */
@@ -3484,12 +3510,18 @@ static NTSTATUS mkdir_internal(connection_struct *conn,
 	if (SMB_VFS_LSTAT(conn, smb_dname) == -1) {
 		DEBUG(2, ("Could not stat directory '%s' just created: %s\n",
 			  smb_fname_str_dbg(smb_dname), strerror(errno)));
+		if (impersonate_root) {
+			unbecome_root();
+		}
 		return map_nt_error_from_unix(errno);
 	}
 
 	if (!S_ISDIR(smb_dname->st.st_ex_mode)) {
 		DEBUG(0, ("Directory '%s' just created is not a directory !\n",
 			  smb_fname_str_dbg(smb_dname)));
+		if (impersonate_root) {
+			unbecome_root();
+		}
 		return NT_STATUS_NOT_A_DIRECTORY;
 	}
 
@@ -3523,23 +3555,25 @@ static NTSTATUS mkdir_internal(connection_struct *conn,
 		}
 	}
 
-	/* make sure owner is current user instead of root */
-	if (current_user_ut->uid != smb_dname->st.st_ex_uid ||
-	    smb_parent_dname->st.st_ex_gid != smb_dname->st.st_ex_gid) {
-		desired_uid = current_user_ut->uid;
-		desired_gid = smb_parent_dname->st.st_ex_gid;
+	if (mount_uid == 0 ) {
+		mount_uid = get_conn_uid(conn);
+	}
 
-		become_root();
+	/* make sure owner is current user instead of root */
+	if (mount_uid != smb_dname->st.st_ex_uid ||
+	    desired_gid != smb_dname->st.st_ex_gid) {
 
 		ret = SMB_VFS_CHOWN(conn, smb_dname->base_name,
-					desired_uid, desired_gid);
+					mount_uid, desired_gid);
 		if (ret != 0) {
 			DEBUG(0, (__location__ ": failed to change owner to %u. error %s\n",
-				desired_uid, strerror(errno)));
+				mount_uid, strerror(errno)));
+			if (impersonate_root) {
+				unbecome_root();
+			}
 			return map_nt_error_from_unix(errno);
 		}
 
-		unbecome_root();
 		need_re_stat = true;
 	}
 
@@ -3555,12 +3589,18 @@ static NTSTATUS mkdir_internal(connection_struct *conn,
 		if (SMB_VFS_LSTAT(conn, smb_dname) == -1) {
 			DEBUG(2, ("Could not stat directory '%s' just created: %s\n",
 			  smb_fname_str_dbg(smb_dname), strerror(errno)));
+			if (impersonate_root) {
+				unbecome_root();
+			}
 			return map_nt_error_from_unix(errno);
 		}
 	}
 
 	notify_fname(conn, NOTIFY_ACTION_ADDED, FILE_NOTIFY_CHANGE_DIR_NAME,
 		     smb_dname->base_name);
+	if (impersonate_root) {
+		unbecome_root();
+	}
 
 	return NT_STATUS_OK;
 }
@@ -3587,6 +3627,8 @@ static NTSTATUS open_directory(connection_struct *conn,
 	struct timespec mtimespec;
 	int info = 0;
 	bool ok;
+	bool impersonate_root = false;
+	const struct security_unix_token *current_user_ut = get_current_utok(conn);
 
 	if (is_ntfs_stream_smb_fname(smb_dname)) {
 		DEBUG(2, ("open_directory: %s is a stream name!\n",
@@ -3620,7 +3662,7 @@ static NTSTATUS open_directory(connection_struct *conn,
 	}
 
 	if ((access_mask & SEC_FLAG_SYSTEM_SECURITY) &&
-			!security_token_has_privilege(get_current_nttok(conn),
+			!security_token_has_privilege(get_saved_conn_nttok(),
 					SEC_PRIV_SECURITY)) {
 		DEBUG(10, ("open_directory: open on %s "
 			"failed - SEC_FLAG_SYSTEM_SECURITY denied.\n",
@@ -3802,14 +3844,18 @@ static NTSTATUS open_directory(connection_struct *conn,
 		/*
 		 * Always perform the open as root, the access should based solely on NT ACL
 		 */
-		become_root();
+		if (current_user_ut->uid != 0) {
+			become_root();
+			impersonate_root = true;
+		}
 #ifdef O_DIRECTORY
 		status = fd_open(conn, fsp, O_RDONLY|O_DIRECTORY, 0);
 #else
 		/* POSIX allows us to open a directory with O_RDONLY. */
 		status = fd_open(conn, fsp, O_RDONLY, 0);
 #endif
-		unbecome_root();
+		if (impersonate_root)
+			unbecome_root();
 
 		if (!NT_STATUS_IS_OK(status)) {
 			DEBUG(5, ("open_directory: Could not open fd for "
@@ -3871,7 +3917,7 @@ static NTSTATUS open_directory(connection_struct *conn,
 		return status;
 	}
 
-	ok = set_share_mode(lck, fsp, get_current_uid(conn),
+	ok = set_share_mode(lck, fsp, get_conn_uid(conn),
 			    req ? req->mid : 0, NO_OPLOCK,
 			    UINT32_MAX);
 	if (!ok) {
@@ -4185,6 +4231,8 @@ static NTSTATUS inherit_new_acl(files_struct *fsp)
 	const struct dom_sid *SY_U_sid = NULL;
 	const struct dom_sid *SY_G_sid = NULL;
 	size_t size = 0;
+	bool impersonate_root = false;
+	const struct security_unix_token *current_user_ut = get_current_utok(fsp->conn);
 
 	if (!parent_dirname(frame, fsp->fsp_name->base_name, &parent_name, NULL)) {
 		TALLOC_FREE(frame);
@@ -4358,13 +4406,17 @@ static NTSTATUS inherit_new_acl(files_struct *fsp)
 
 	if (inherit_owner) {
 		/* We need to be root to force this. */
-		become_root();
+		if (current_user_ut->uid != 0) {
+			become_root();
+			impersonate_root = true;
+		}
 	}
 	status = SMB_VFS_FSET_NT_ACL(fsp,
 			security_info_sent,
 			psd);
 	if (inherit_owner) {
-		unbecome_root();
+		if (impersonate_root)
+			unbecome_root();
 	}
 	TALLOC_FREE(frame);
 	return status;
@@ -4718,7 +4770,7 @@ static NTSTATUS create_file_unixpath(connection_struct *conn,
 	}
 
 	if ((access_mask & SEC_FLAG_SYSTEM_SECURITY) &&
-			!security_token_has_privilege(get_current_nttok(conn),
+			!security_token_has_privilege(get_saved_conn_nttok(),
 					SEC_PRIV_SECURITY)) {
 		DEBUG(10, ("create_file_unixpath: open on %s "
 			"failed - SEC_FLAG_SYSTEM_SECURITY denied.\n",

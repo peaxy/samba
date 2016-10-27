@@ -27,6 +27,9 @@
 #include "../lib/util/setid.h"
 
 extern struct current_user current_user;
+extern int smb_forced_root_cnt;
+extern uint64_t saved_conn_vuid;
+extern connection_struct *saved_conn;
 
 /****************************************************************************
  Are two UNIX tokens equal ?
@@ -480,6 +483,10 @@ void init_sec_ctx(void)
 	current_user.conn = NULL;
 	current_user.vuid = UID_FIELD_INVALID;
 	current_user.nt_user_token = NULL;
+
+	smb_forced_root_cnt = 0;
+	saved_conn_vuid = 0;
+	saved_conn = NULL;
 }
 
 /*************************************************************

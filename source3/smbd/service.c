@@ -745,6 +745,8 @@ static NTSTATUS make_connection_snum(struct smbXsrv_connection *xconn,
 		goto err_root_exit;
 	}
 
+	save_conn();
+
 	effuid = geteuid();
 	effgid = getegid();
 

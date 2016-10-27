@@ -28,6 +28,9 @@
 
 /* what user is current? */
 extern struct current_user current_user;
+extern int smb_forced_root_cnt;
+extern uint64_t saved_conn_vuid;
+extern connection_struct *saved_conn;
 
 /****************************************************************************
  Become the guest user without changing the security context stack.
@@ -637,3 +640,62 @@ uint64_t get_current_vuid(connection_struct *conn)
 {
 	return current_user.vuid;
 }
+
+/*
+ * Indicate whether samba internal logic forced security context to root.
+ * This is used during NTACL access check to determine whether to (1) honor root
+ * or (2) switch back to security token used during mount before access checking
+ * against NT ACL.
+ */
+void smb_forced_root_inc() {
+	if (smb_forced_root_cnt < 0 || smb_forced_root_cnt > 10) {
+		DEBUG(1, (__location__ ": PANIC - smb_forced_root out of range [%d]\n",
+			smb_forced_root_cnt));
+	}
+
+	smb_forced_root_cnt++;
+}
+void smb_forced_root_dec() {
+
+	if (smb_forced_root_cnt <= 0 || smb_forced_root_cnt > 10) {
+		DEBUG(1, (__location__ ": PANIC - smb_forced_root out of range [%d]\n",
+			smb_forced_root_cnt));
+	}
+
+	smb_forced_root_cnt--;
+}
+
+int is_smb_forced_root() {
+	return smb_forced_root_cnt;
+}
+
+void save_conn() {
+	saved_conn = current_user.conn;
+	saved_conn_vuid = current_user.vuid;
+}
+
+void clear_conn() {
+	saved_conn = NULL;
+	saved_conn_vuid = NULL;
+}
+
+uid_t get_conn_uid(connection_struct *conn) {
+	return saved_conn->session_info->unix_token->uid;
+}
+
+gid_t get_conn_gid(connection_struct *conn) {
+	return saved_conn->session_info->unix_token->gid;
+}
+
+uint64_t get_saved_conn_vuid() {
+	return saved_conn_vuid;
+}
+
+const struct security_token *get_saved_conn_nttok() {
+	return saved_conn->session_info->security_token;
+}
+
+const struct security_unix_token *get_conn_utok(connection_struct *conn) {
+	return saved_conn->session_info->unix_token;
+}
+

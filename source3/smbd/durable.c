@@ -557,6 +557,8 @@ NTSTATUS vfs_default_durable_reconnect(struct connection_struct *conn,
 	enum ndr_err_code ndr_err;
 	struct vfs_default_durable_cookie cookie;
 	DATA_BLOB new_cookie_blob = data_blob_null;
+	bool impersonate_root = false;
+	const struct security_unix_token *current_user_ut = get_current_utok(conn);
 
 	*result = NULL;
 	*new_cookie = data_blob_null;
@@ -800,9 +802,13 @@ NTSTATUS vfs_default_durable_reconnect(struct connection_struct *conn,
 	/*
 	 * Always open as root. Access check should be based solely on NT ACL.
 	 */
-	become_root();
+	if (current_user_ut->uid != 0) {
+		become_root();
+		impersonate_root = true;
+	}
 	status = fd_open(conn, fsp, flags, 0 /* mode */);
-	unbecome_root();
+	if (impersonate_root)
+		unbecome_root();
 
 	if (!NT_STATUS_IS_OK(status)) {
 		TALLOC_FREE(lck);
