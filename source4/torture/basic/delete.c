@@ -962,7 +962,7 @@ static bool deltest16a(struct torture_context *tctx, struct smbcli_state *cli1, 
 
 	/* And the file should be deleted ! */
 	fnum1 = smbcli_open(cli1->tree, fname, O_RDWR, DENY_NONE);
-	torture_assert(tctx, fnum1 != -1, talloc_asprintf(tctx, "open of %s failed (%s)",
+	torture_assert(tctx, fnum1 == -1, talloc_asprintf(tctx, "open of %s failed (%s)",
 		       fname, smbcli_errstr(cli1->tree)));
 
 	smbcli_close(cli1->tree, fnum1);
@@ -1133,7 +1133,7 @@ static bool deltest17a(struct torture_context *tctx, struct smbcli_state *cli1, 
 	 * delete on close flag from the first handle
 	 */
 	fnum1 = smbcli_open(cli1->tree, fname, O_RDWR, DENY_NONE);
-	torture_assert(tctx, fnum1 != -1, talloc_asprintf(tctx, "open - 3 of %s failed (%s)",
+	torture_assert(tctx, fnum1 == -1, talloc_asprintf(tctx, "open - 3 of %s failed (%s)",
 		       fname, smbcli_errstr(cli1->tree)));
 
 	smbcli_close(cli1->tree, fnum1);
