@@ -245,6 +245,9 @@ static bool gen_set_aliases(struct torture_context *tctx,
 		NTSTATUS status, status1;
 		SSVAL(t2->in.params.data, level_offset, level);
 
+		// Do not set unlink otherwise the file gets deleted.
+		if (level == SMB_POSIX_PATH_UNLINK) continue;
+
 		status1 = NT_STATUS_OK;
 
 		for (dsize=2; dsize<1024; dsize += 2) {
