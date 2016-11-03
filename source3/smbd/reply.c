@@ -6435,6 +6435,19 @@ NTSTATUS rename_internals_fsp(connection_struct *conn,
 
 	status = parent_dirname_compatible_open(conn, smb_fname_dst_in);
 	if (!NT_STATUS_IS_OK(status)) {
+		if (NT_STATUS_EQUAL(status, NT_STATUS_SHARING_VIOLATION)) {
+			status = check_access(conn, NULL, fsp->fsp_name,
+						FILE_WRITE_ATTRIBUTES);
+			if (!NT_STATUS_IS_OK(status))
+				status = NT_STATUS_ACCESS_DENIED;
+			else
+				status = NT_STATUS_SHARING_VIOLATION;
+		}
+		return status;
+	}
+
+	status = check_access(conn, NULL, fsp->fsp_name, FILE_WRITE_ATTRIBUTES);
+	if (!NT_STATUS_IS_OK(status)) {
 		return status;
 	}
 
