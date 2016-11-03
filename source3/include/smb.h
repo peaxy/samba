@@ -402,7 +402,7 @@ Offset  Data			length.
 
 #define NTCREATEX_OPTIONS_MUST_IGNORE_MASK      (0x008F0480)
 
-#define NTCREATEX_OPTIONS_INVALID_PARAM_MASK    (0xFF100030)
+#define NTCREATEX_OPTIONS_INVALID_PARAM_MASK    (0xFF000030)
 
 /*
  * Private create options used by the ntcreatex processing code. From Samba4.

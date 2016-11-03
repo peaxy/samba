@@ -4721,12 +4721,27 @@ static NTSTATUS create_file_unixpath(connection_struct *conn,
 		  (unsigned int)private_flags,
 		  ea_list, sd, smb_fname_str_dbg(smb_fname)));
 
-	if (create_options & FILE_OPEN_BY_FILE_ID) {
+	if (create_options & (FILE_OPEN_BY_FILE_ID|FILE_CREATE_TREE_CONNECTION|
+			      FILE_RESERVER_OPFILTER)) {
 		status = NT_STATUS_NOT_SUPPORTED;
 		goto fail;
 	}
 
 	if (create_options & NTCREATEX_OPTIONS_INVALID_PARAM_MASK) {
+		status = NT_STATUS_INVALID_PARAMETER;
+		goto fail;
+	}
+
+	/*
+	 * reject reserved access mask bits 26 and 27
+	 */
+	if (access_mask & 0x0C000000) {
+		status = NT_STATUS_ACCESS_DENIED;
+		goto fail;
+	}
+
+	if ((file_attributes & FILE_ATTRIBUTE_DEVICE) ||
+	    (file_attributes & FILE_ATTRIBUTE_VOLUME)) {
 		status = NT_STATUS_INVALID_PARAMETER;
 		goto fail;
 	}
