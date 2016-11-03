@@ -6617,6 +6617,17 @@ NTSTATUS rename_internals_fsp(connection_struct *conn,
 		goto out;
 	}
 
+	/*
+	 * reject rename if we are holding level 2 oplock
+	 */
+	if (LEVEL_II_OPLOCK_TYPE(fsp->oplock_type)) {
+		status = NT_STATUS_SHARING_VIOLATION;
+		DEBUG(3, ("rename_internals_fsp: Error %s rename %s -> %s\n",
+			nt_errstr(status), smb_fname_str_dbg(fsp->fsp_name),
+			smb_fname_str_dbg(smb_fname_dst)));
+		goto out;
+	}
+
 	if (rename_path_prefix_equal(fsp->fsp_name, smb_fname_dst)) {
 		status = NT_STATUS_ACCESS_DENIED;
 	}
