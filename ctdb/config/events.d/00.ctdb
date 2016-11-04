@@ -156,6 +156,22 @@ monitor_system_memory ()
     fi
 }
 
+_stop_service ()
+{
+    service "$1" stop >/dev/null 2>&1
+    killall -0 -q "${1}d" && {
+        sleep 1
+        killall -q -9 "${1}d"
+    }
+}
+
+_release_all_tdb_locks ()
+{
+    _stop_service "winbind"
+    _stop_service "smb"
+    _stop_service "nmb"
+}
+
 ############################################################
 
 ctdb_check_args "$@"
@@ -185,6 +201,9 @@ case "$1" in
 	;;
 
     startup)
+	# Kill all outstanding winbind, smbd, nmbd to prevent tdb lock contention during startup
+	_release_all_tdb_locks
+
 	ctdb attach ctdb.tdb persistent
 	;;
     monitor)
