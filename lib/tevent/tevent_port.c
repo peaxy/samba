@@ -498,7 +498,7 @@ static int port_event_loop(struct port_event_context *port_ev, struct timeval *t
 
 	if (ret == -1 && port_errno == ETIME && tvalp) {
 		/* we don't care about a possible delay here */
-		tevent_common_loop_timer_delay(ev);
+		tevent_common_loop_timer_delay(ev, NULL);
 		return 0;
 	}
 
@@ -751,7 +751,7 @@ static int port_event_loop_once(struct tevent_context *ev, const char *location)
 		return 0;
 	}
 
-	tval = tevent_common_loop_timer_delay(ev);
+	tval = tevent_common_loop_timer_delay(ev, NULL);
 	if (tevent_timeval_is_zero(&tval)) {
 		return 0;
 	}

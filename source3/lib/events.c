@@ -196,7 +196,7 @@ bool run_events_poll(struct tevent_context *ev, int pollrtn,
 	if (pollrtn <= 0) {
 		struct timeval tval;
 
-		tval = tevent_common_loop_timer_delay(ev);
+		tval = tevent_common_loop_timer_delay(ev, NULL);
 		if (tevent_timeval_is_zero(&tval)) {
 			return true;
 		}
