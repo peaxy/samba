@@ -108,7 +108,7 @@ static bool open_and_sort_dir(vfs_handle_struct *handle,
 	data->number_of_entries = i;
 
 	/* Sort the directory entries by name */
-	TYPESAFE_QSORT(data->directory_list, data->number_of_entries, compare_dirent);
+	//TYPESAFE_QSORT(data->directory_list, data->number_of_entries, compare_dirent);
 	return true;
 }
 
