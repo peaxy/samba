@@ -358,3 +358,6 @@ bool tevent_port_init(void);
 
 void tevent_trace_point_callback(struct tevent_context *ev,
 				 enum tevent_trace_point);
+
+// We will move this flag into tunable parameter in samba 4.3.8
+#define EVENT_LOOP_POLL_SUB_INTERVAL 		(5*1000)

@@ -627,6 +627,7 @@ static int epoll_event_loop(struct epoll_event_context *epoll_ev, struct timeval
 	struct epoll_event events[MAXEVENTS];
 	int timeout = -1;
 	int wait_errno;
+	int sub_interval = EVENT_LOOP_POLL_SUB_INTERVAL;
 
 	if (tvalp) {
 		/* it's better to trigger timed events a bit later than too early */
@@ -638,10 +639,20 @@ static int epoll_event_loop(struct epoll_event_context *epoll_ev, struct timeval
 		return 0;
 	}
 
-	tevent_trace_point_callback(epoll_ev->ev, TEVENT_TRACE_BEFORE_WAIT);
-	ret = epoll_wait(epoll_ev->epoll_fd, events, MAXEVENTS, timeout);
-	wait_errno = errno;
-	tevent_trace_point_callback(epoll_ev->ev, TEVENT_TRACE_AFTER_WAIT);
+wait_more:
+	if (timeout > sub_interval) {
+		tevent_trace_point_callback(epoll_ev->ev, TEVENT_TRACE_BEFORE_WAIT);
+		ret = epoll_wait(epoll_ev->epoll_fd, events, MAXEVENTS, sub_interval);
+		wait_errno = errno;
+		tevent_trace_point_callback(epoll_ev->ev, TEVENT_TRACE_AFTER_WAIT);
+		timeout -= sub_interval;
+	} else {
+		tevent_trace_point_callback(epoll_ev->ev, TEVENT_TRACE_BEFORE_WAIT);
+		ret = epoll_wait(epoll_ev->epoll_fd, events, MAXEVENTS, timeout);
+		wait_errno = errno;
+		tevent_trace_point_callback(epoll_ev->ev, TEVENT_TRACE_AFTER_WAIT);
+		timeout = 0;
+	}
 
 	if (ret == -1 && wait_errno == EINTR && epoll_ev->ev->signal_events) {
 		if (tevent_common_check_signal(epoll_ev->ev)) {
@@ -657,7 +668,10 @@ static int epoll_event_loop(struct epoll_event_context *epoll_ev, struct timeval
 	if (ret == 0 && tvalp) {
 		/* we don't care about a possible delay here */
 		tevent_common_loop_timer_delay(epoll_ev->ev);
-		return 0;
+		if (timeout > 0)
+			goto wait_more;
+		else
+			return 0;
 	}
 
 	for (i=0;i<ret;i++) {

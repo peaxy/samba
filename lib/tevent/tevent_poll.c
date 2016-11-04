@@ -499,6 +499,7 @@ static int poll_event_loop_poll(struct tevent_context *ev,
 	int poll_errno;
 	struct tevent_fd *fde = NULL;
 	unsigned i;
+	int sub_interval = EVENT_LOOP_POLL_SUB_INTERVAL;
 
 	if (ev->signal_events && tevent_common_check_signal(ev)) {
 		return 0;
@@ -515,10 +516,20 @@ static int poll_event_loop_poll(struct tevent_context *ev,
 		return -1;
 	}
 
-	tevent_trace_point_callback(poll_ev->ev, TEVENT_TRACE_BEFORE_WAIT);
-	pollrtn = poll(poll_ev->fds, poll_ev->num_fds, timeout);
-	poll_errno = errno;
-	tevent_trace_point_callback(poll_ev->ev, TEVENT_TRACE_AFTER_WAIT);
+wait_more:
+	if (timeout > sub_interval) {
+		tevent_trace_point_callback(poll_ev->ev, TEVENT_TRACE_BEFORE_WAIT);
+		pollrtn = poll(poll_ev->fds, poll_ev->num_fds, sub_interval);
+		poll_errno = errno;
+		tevent_trace_point_callback(poll_ev->ev, TEVENT_TRACE_AFTER_WAIT);
+		timeout -= sub_interval;
+	} else {
+		tevent_trace_point_callback(poll_ev->ev, TEVENT_TRACE_BEFORE_WAIT);
+		pollrtn = poll(poll_ev->fds, poll_ev->num_fds, timeout);
+		poll_errno = errno;
+		tevent_trace_point_callback(poll_ev->ev, TEVENT_TRACE_AFTER_WAIT);
+		timeout = 0;
+	}
 
 	if (pollrtn == -1 && poll_errno == EINTR && ev->signal_events) {
 		tevent_common_check_signal(ev);
@@ -528,7 +539,11 @@ static int poll_event_loop_poll(struct tevent_context *ev,
 	if (pollrtn == 0 && tvalp) {
 		/* we don't care about a possible delay here */
 		tevent_common_loop_timer_delay(ev);
-		return 0;
+
+		if (timeout > 0)
+			goto wait_more;
+		else
+			return 0;
 	}
 
 	if (pollrtn <= 0) {
