@@ -155,6 +155,19 @@ static void ctdb_health_callback(struct ctdb_context *ctdb, int status, void *p)
 		ctdb_run_notification_script(ctdb, "healthy");
 	}
 
+	/*
+	 * If the health monitor event script timed out for 45 times, which
+	 * is equivalent to ~ 1 hour, there is something really wrong. We want
+	 * to terminate CTDB to prevent leaking of CTDB processes.
+	 */
+	if (ctdb->event_script_timeouts >= 45) {
+		DEBUG(DEBUG_ERR, (__location__ ": event script timeout count %d is beyond our limit. "
+				"Something is really wrong. Shutdown CTDB to avoid leaking CTDB processes\n",
+				ctdb->event_script_timeouts));
+		ctdb_shutdown_sequence(ctdb, 0);
+		return;
+	}
+
 after_change_status:
 	next_interval = ctdb->monitor->next_interval;
 

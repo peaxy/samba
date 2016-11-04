@@ -36,8 +36,10 @@ case "$1" in
 	ctdb_counter_incr
 	if ! ctdb_check_counter "quiet" -ge 210 ; then
 	    echo "Reclock file \"$CTDB_RECOVERY_LOCK\" can not be accessed. Shutting down."
-	    df
-	    sleep 1
+	    # df
+	    # sleep 1
+	    # If NS resync is stuck, "df" above will get stuck. We won't be able to shutdown CTDB.
+	    sleep 5
 	    ctdb shutdown
 	fi
 
