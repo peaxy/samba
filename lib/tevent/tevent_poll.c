@@ -500,6 +500,7 @@ static int poll_event_loop_poll(struct tevent_context *ev,
 	struct tevent_fd *fde = NULL;
 	unsigned i;
 	int sub_interval = EVENT_LOOP_POLL_SUB_INTERVAL;
+	int was_timedout = 0;
 
 	if (ev->signal_events && tevent_common_check_signal(ev)) {
 		return 0;
@@ -538,9 +539,9 @@ wait_more:
 
 	if (pollrtn == 0 && tvalp) {
 		/* we don't care about a possible delay here */
-		tevent_common_loop_timer_delay(ev);
+		tevent_common_loop_timer_delay(ev, &was_timedout);
 
-		if (timeout > 0)
+		if (timeout > 0 && !was_timedout)
 			goto wait_more;
 		else
 			return 0;
@@ -662,7 +663,7 @@ static int poll_event_loop_once(struct tevent_context *ev,
 		return 0;
 	}
 
-	tval = tevent_common_loop_timer_delay(ev);
+	tval = tevent_common_loop_timer_delay(ev, NULL);
 	if (tevent_timeval_is_zero(&tval)) {
 		return 0;
 	}

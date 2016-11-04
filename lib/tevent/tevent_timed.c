@@ -280,7 +280,7 @@ struct tevent_timer *tevent_common_add_timer_v2(struct tevent_context *ev,
   return the delay until the next timed event,
   or zero if a timed event was triggered
 */
-struct timeval tevent_common_loop_timer_delay(struct tevent_context *ev)
+struct timeval tevent_common_loop_timer_delay(struct tevent_context *ev, int *was_timedout)
 {
 	struct timeval current_time = tevent_timeval_zero();
 	struct tevent_timer *te = ev->timer_events;
@@ -349,6 +349,12 @@ struct timeval tevent_common_loop_timer_delay(struct tevent_context *ev)
 		     te, te->handler_name);
 
 	talloc_free(te);
+
+	/* optionally indicate to caller whether timeout handler has been invoked.
+	 * This is needed when we break the timeout wait into smaller intervals
+	 */
+	if (was_timedout)
+		*was_timedout = 1;
 
 	return tevent_timeval_zero();
 }

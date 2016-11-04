@@ -201,7 +201,7 @@ static int select_event_loop_select(struct select_event_context *select_ev, stru
 
 	if (selrtn == 0 && tvalp) {
 		/* we don't care about a possible delay here */
-		tevent_common_loop_timer_delay(select_ev->ev);
+		tevent_common_loop_timer_delay(select_ev->ev, NULL);
 		return 0;
 	}
 
@@ -249,7 +249,7 @@ static int select_event_loop_once(struct tevent_context *ev, const char *locatio
 		return 0;
 	}
 
-	tval = tevent_common_loop_timer_delay(ev);
+	tval = tevent_common_loop_timer_delay(ev, NULL);
 	if (tevent_timeval_is_zero(&tval)) {
 		return 0;
 	}

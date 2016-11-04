@@ -318,7 +318,7 @@ struct tevent_timer *tevent_common_add_timer_v2(struct tevent_context *ev,
 					        void *private_data,
 					        const char *handler_name,
 					        const char *location);
-struct timeval tevent_common_loop_timer_delay(struct tevent_context *);
+struct timeval tevent_common_loop_timer_delay(struct tevent_context *, int *was_timedout);
 
 void tevent_common_schedule_immediate(struct tevent_immediate *im,
 				      struct tevent_context *ev,

@@ -628,6 +628,7 @@ static int epoll_event_loop(struct epoll_event_context *epoll_ev, struct timeval
 	int timeout = -1;
 	int wait_errno;
 	int sub_interval = EVENT_LOOP_POLL_SUB_INTERVAL;
+	int was_timedout = 0;
 
 	if (tvalp) {
 		/* it's better to trigger timed events a bit later than too early */
@@ -667,8 +668,8 @@ wait_more:
 
 	if (ret == 0 && tvalp) {
 		/* we don't care about a possible delay here */
-		tevent_common_loop_timer_delay(epoll_ev->ev);
-		if (timeout > 0)
+		tevent_common_loop_timer_delay(epoll_ev->ev, &was_timedout);
+		if (timeout > 0 && !was_timedout)
 			goto wait_more;
 		else
 			return 0;
@@ -922,7 +923,7 @@ static int epoll_event_loop_once(struct tevent_context *ev, const char *location
 		return 0;
 	}
 
-	tval = tevent_common_loop_timer_delay(ev);
+	tval = tevent_common_loop_timer_delay(ev, NULL);
 	if (tevent_timeval_is_zero(&tval)) {
 		return 0;
 	}
