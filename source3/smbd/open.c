@@ -4728,6 +4728,8 @@ static NTSTATUS create_file_unixpath(connection_struct *conn,
 	}
 
 	if (create_options & NTCREATEX_OPTIONS_INVALID_PARAM_MASK) {
+		DEBUG(10, (__location__ ": create_option 0x%x, invalid 0x%x\n", create_options,
+				NTCREATEX_OPTIONS_INVALID_PARAM_MASK));
 		status = NT_STATUS_INVALID_PARAMETER;
 		goto fail;
 	}
@@ -4735,13 +4737,15 @@ static NTSTATUS create_file_unixpath(connection_struct *conn,
 	/*
 	 * reject reserved access mask bits 26 and 27
 	 */
-	if (access_mask & 0x0C000000) {
+	if ((!lp_posix_pathnames()) && (access_mask & 0x0C000000)) {
 		status = NT_STATUS_ACCESS_DENIED;
 		goto fail;
 	}
 
-	if ((file_attributes & FILE_ATTRIBUTE_DEVICE) ||
-	    (file_attributes & FILE_ATTRIBUTE_VOLUME)) {
+	if ((!lp_posix_pathnames()) &&
+	    ((file_attributes & FILE_ATTRIBUTE_DEVICE) ||
+	     (file_attributes & FILE_ATTRIBUTE_VOLUME))) {
+		DEBUG(10, (__location__ ": file_attributes 0x%x device or volume\n", file_attributes));
 		status = NT_STATUS_INVALID_PARAMETER;
 		goto fail;
 	}
