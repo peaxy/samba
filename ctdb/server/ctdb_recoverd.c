@@ -1795,6 +1795,9 @@ done:
 }
 
 
+static void force_election(struct ctdb_recoverd *rec, uint32_t pnn,
+			   struct ctdb_node_map *nodemap);
+
 /*
   we are the recmaster, and recovery is needed - start a recovery run
  */
@@ -1909,6 +1912,10 @@ static int do_recovery(struct ctdb_recoverd *rec,
 	ret = set_recovery_mode(ctdb, rec, nodemap, CTDB_RECOVERY_ACTIVE);
 	if (ret != 0) {
 		DEBUG(DEBUG_ERR, (__location__ " Unable to set recovery mode to active on cluster\n"));
+		if ( ctdb->runstate == CTDB_RUNSTATE_RUNNING) {
+			ctdb_recovery_unlock(ctdb);
+			force_election(rec, pnn, nodemap);
+		}
 		goto fail;
 	}
 
@@ -2065,6 +2072,10 @@ static int do_recovery(struct ctdb_recoverd *rec,
 	ret = set_recovery_master(ctdb, nodemap, pnn);
 	if (ret!=0) {
 		DEBUG(DEBUG_ERR, (__location__ " Unable to set recovery master\n"));
+		if ( ctdb->runstate == CTDB_RUNSTATE_RUNNING) {
+			ctdb_recovery_unlock(ctdb);
+			force_election(rec, pnn, nodemap);
+		}
 		goto fail;
 	}
 
@@ -2074,6 +2085,11 @@ static int do_recovery(struct ctdb_recoverd *rec,
 	ret = set_recovery_mode(ctdb, rec, nodemap, CTDB_RECOVERY_NORMAL);
 	if (ret != 0) {
 		DEBUG(DEBUG_ERR, (__location__ " Unable to set recovery mode to normal on cluster\n"));
+		if ( ctdb->runstate == CTDB_RUNSTATE_RUNNING) {
+			ctdb_recovery_unlock(ctdb);
+			force_election(rec, pnn, nodemap);
+		}
+
 		goto fail;
 	}
 
@@ -2710,6 +2726,10 @@ static void force_election(struct ctdb_recoverd *rec, uint32_t pnn,
 	ret = set_recovery_mode(ctdb, rec, nodemap, CTDB_RECOVERY_ACTIVE);
 	if (ret != 0) {
 		DEBUG(DEBUG_ERR, (__location__ " Unable to set recovery mode to active on cluster\n"));
+		if ( ctdb->runstate == CTDB_RUNSTATE_RUNNING) {
+			ctdb_recovery_unlock(ctdb);
+		}
+
 		return;
 	}
 
