@@ -300,7 +300,7 @@ static NTSTATUS idmap_tdb2_script(struct idmap_tdb2_context *ctx, struct id_map 
 			return NT_STATUS_NONE_MAPPED;			
 		}
 	} else {
-		DEBUG(0,("Bad reply '%s' from idmap script %s\n",
+		DEBUG(10,("Bad reply '%s' from idmap script %s\n",
 			 line, ctx->script));
 		return NT_STATUS_NONE_MAPPED;
 	}
