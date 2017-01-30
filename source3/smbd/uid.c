@@ -647,7 +647,7 @@ uint64_t get_current_vuid(connection_struct *conn)
  * or (2) switch back to security token used during mount before access checking
  * against NT ACL.
  */
-void smb_forced_root_inc() {
+void smb_forced_root_inc(void) {
 	if (smb_forced_root_cnt < 0 || smb_forced_root_cnt > 10) {
 		DEBUG(1, (__location__ ": PANIC - smb_forced_root out of range [%d]\n",
 			smb_forced_root_cnt));
@@ -655,7 +655,7 @@ void smb_forced_root_inc() {
 
 	smb_forced_root_cnt++;
 }
-void smb_forced_root_dec() {
+void smb_forced_root_dec(void) {
 
 	if (smb_forced_root_cnt <= 0 || smb_forced_root_cnt > 10) {
 		DEBUG(1, (__location__ ": PANIC - smb_forced_root out of range [%d]\n",
@@ -665,16 +665,16 @@ void smb_forced_root_dec() {
 	smb_forced_root_cnt--;
 }
 
-int is_smb_forced_root() {
+int is_smb_forced_root(void) {
 	return smb_forced_root_cnt;
 }
 
-void save_conn() {
+void save_conn(void) {
 	saved_conn = current_user.conn;
 	saved_conn_vuid = current_user.vuid;
 }
 
-void clear_conn() {
+void clear_conn(void) {
 	saved_conn = NULL;
 	saved_conn_vuid = NULL;
 }
@@ -687,11 +687,11 @@ gid_t get_conn_gid(connection_struct *conn) {
 	return saved_conn->session_info->unix_token->gid;
 }
 
-uint64_t get_saved_conn_vuid() {
+uint64_t get_saved_conn_vuid(connection_struct *conn) {
 	return saved_conn_vuid;
 }
 
-const struct security_token *get_saved_conn_nttok() {
+const struct security_token *get_saved_conn_nttok(void) {
 	return saved_conn->session_info->security_token;
 }
 

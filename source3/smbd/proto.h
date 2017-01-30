@@ -1141,15 +1141,15 @@ gid_t get_current_gid(connection_struct *conn);
 const struct security_unix_token *get_current_utok(connection_struct *conn);
 const struct security_token *get_current_nttok(connection_struct *conn);
 uint64_t get_current_vuid(connection_struct *conn);
-void smb_forced_root_inc();
-void smb_forced_root_dec();
-int is_smb_forced_root();
-void save_conn();
-void clear_saved_conn();
+void smb_forced_root_inc(void);
+void smb_forced_root_dec(void);
+int is_smb_forced_root(void);
+void save_conn(void);
+void clear_conn(void);
 uid_t get_conn_uid(connection_struct *conn);
 gid_t get_conn_gid(connection_struct *conn);
-uint64_t get_saved_conn_vuid();
-const struct security_token *get_saved_conn_nttok();
+uint64_t get_saved_conn_vuid(connection_struct *conn);
+const struct security_token *get_saved_conn_nttok(void);
 const struct security_unix_token *get_conn_utok(connection_struct *conn);
 
 /* The following definitions come from smbd/utmp.c  */

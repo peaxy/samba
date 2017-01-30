@@ -758,7 +758,7 @@ static NTSTATUS fset_nt_acl_common(vfs_handle_struct *handle, files_struct *fsp,
 	uint8_t hash[XATTR_SD_HASH_SIZE];
 	uint8_t sys_acl_hash[XATTR_SD_HASH_SIZE];
 	bool chown_needed = false;
-	char *sys_acl_description;
+	char *sys_acl_description = NULL;
 	TALLOC_CTX *frame = talloc_stackframe();
 
 	if (DEBUGLEVEL >= 10) {

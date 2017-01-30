@@ -3770,7 +3770,7 @@ NTSTATUS posix_fget_nt_acl(struct files_struct *fsp, uint32_t security_info,
 {
 	SMB_STRUCT_STAT sbuf;
 	SMB_ACL_T posix_acl = NULL;
-	struct pai_val *pal;
+	struct pai_val *pal = NULL;
 	TALLOC_CTX *frame = talloc_stackframe();
 	NTSTATUS status;
 
@@ -3818,7 +3818,7 @@ NTSTATUS posix_get_nt_acl(struct connection_struct *conn, const char *name,
 {
 	SMB_ACL_T posix_acl = NULL;
 	SMB_ACL_T def_acl = NULL;
-	struct pai_val *pal;
+	struct pai_val *pal = NULL;
 	struct smb_filename smb_fname;
 	int ret;
 	TALLOC_CTX *frame = talloc_stackframe();
