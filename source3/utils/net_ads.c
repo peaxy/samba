@@ -1551,8 +1551,8 @@ int net_ads_join(struct net_context *c, int argc, const char **argv)
 	r->in.use_kerberos	= c->opt_kerberos;
 	r->in.modify_config	= modify_config;
 	r->in.join_flags	= WKSSVC_JOIN_FLAGS_JOIN_TYPE |
-				  WKSSVC_JOIN_FLAGS_ACCOUNT_CREATE |
-				  WKSSVC_JOIN_FLAGS_DOMAIN_JOIN_IF_JOINED;
+				  WKSSVC_JOIN_FLAGS_ACCOUNT_CREATE;
+	if (c->opt_force) r->in.join_flags |= WKSSVC_JOIN_FLAGS_DOMAIN_JOIN_IF_JOINED;
 	r->in.msg_ctx		= c->msg_ctx;
 
 	werr = libnet_Join(ctx, r);
