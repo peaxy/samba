@@ -2302,6 +2302,10 @@ static WERROR libnet_DomainJoin(TALLOC_CTX *mem_ctx,
 	} else {
 		status = libnet_join_joindomain_rpc(mem_ctx, r, cli);
 	}
+	/* HFL-9209 - use existing machine acct */
+	if (NT_STATUS_EQUAL(status, NT_STATUS_USER_EXISTS))
+		status = NT_STATUS_OK;
+
 	if (!NT_STATUS_IS_OK(status)) {
 		libnet_join_set_error_string(mem_ctx, r,
 			"failed to join domain '%s' over rpc: %s",
