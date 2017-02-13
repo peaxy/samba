@@ -24,12 +24,15 @@ case "$1" in
 	# Try to stat the reclock file as a background process so that
 	# we don't block in case the cluster filesystem is unavailable
 	(
-	    # Only stat the reclock file as needed, once every 30 seconds.
-	    if ctdb_should_stat 30 ; then
-	        if stat $CTDB_RECOVERY_LOCK ; then
-		    # We could stat the file, reset the counter
-		    ctdb_counter_init
-	        fi
+	    # This script is called once every MonitorInterval cycle,
+	    # so always stat the reclock file.
+	    CMD_OUT=`stat $CTDB_RECOVERY_LOCK`
+	    RETURN_CODE="$?"
+	    evt_logger "01.reclock stat return code $RETURN_CODE"
+	    evt_logger "01.reclock stat output $CMD_OUT"
+	    if [ "$RETURN_CODE" == 0 ]; then
+		# We could stat the file, reset the counter
+		ctdb_counter_init
 	    fi
 	) >/dev/null 2>&1 &
 

@@ -1,0 +1,69 @@
+#!/bin/sh
+# script to rotate the log files
+
+[ -n "$CTDB_BASE" ] || \
+    export CTDB_BASE=$(cd -P $(dirname "$0") ; dirname "$PWD")
+
+. $CTDB_BASE/functions
+loadconfig
+
+# need to clean up some varibles for the functions below.
+CTDB_LOGFILE=${CTDB_LOGGING#$"file:"}
+EVENT_LOGFILE=${CTDB_EVENT_LOGGING#$"file:"}
+LOGROT_CONF=${LOGROTATE_CONF#$"file:"}
+TEMP_CONF="$LOGROT_CONF".tmp
+LOGROT_STATE=${LOGROTATE_STATE#$"file:"}
+
+case "$1" in
+    monitor)
+        CURRENT_LOG_ARRAY=(`grep "{" "$LOGROT_CONF" | awk '{print $1}'`)
+        CONFIG_LOGS_ARRAY=("$CTDB_LOGFILE" "$EVENT_LOGFILE")
+        if [ "${CURRENT_LOG_ARRAY[*]}" != "${CONFIG_LOGS_ARRAY[*]}" ]; then
+            cp -ap "$LOGROT_CONF" "$TEMP_CONF"
+            for INDEX in ${!CURRENT_LOG_ARRAY[*]}; do
+                sed -i "s%${CURRENT_LOG_ARRAY[$INDEX]}%${CONFIG_LOGS_ARRAY[$INDEX]}%" "$TEMP_CONF"
+            done
+            TEMP_CONF_LEN=$(wc -l "$TEMP_CONF" | awk '{print $1}')
+            LOGROT_CONF_LEN=$(wc -l "$LOGROT_CONF" | awk '{print $1}')
+            if [ "$TEMP_CONF_LEN" == "$LOGROT_CONF_LEN" ]; then
+                mv "$TEMP_CONF" "$LOGROT_CONF"
+            fi
+        fi
+        CURRENT_SIZE_ARRAY=(`grep "size" "$LOGROT_CONF" | awk '{print $2}'`)
+        CONFIG_SIZE_ARRAY=("$LOGROTATE_SIZE" "$LOGROTATE_SIZE")
+        if [ "${CURRENT_SIZE_ARRAY[*]}" != "${CONFIG_SIZE_ARRAY[*]}" ]; then
+            cp -ap "$LOGROT_CONF" "$TEMP_CONF"
+            for INDEX in ${!CURRENT_SIZE_ARRAY[*]}; do
+                sed -i "s%${CURRENT_SIZE_ARRAY[$INDEX]}%${CONFIG_SIZE_ARRAY[$INDEX]}%" "$TEMP_CONF"
+            done
+            TEMP_CONF_LEN=$(wc -l "$TEMP_CONF" | awk '{print $1}')
+            LOGROT_CONF_LEN=$(wc -l "$LOGROT_CONF" | awk '{print $1}')
+            if [ "$TEMP_CONF_LEN" == "$LOGROT_CONF_LEN" ]; then
+                mv "$TEMP_CONF" "$LOGROT_CONF"
+            fi
+        fi
+        CURRENT_ROTATE_ARRAY=(`grep "rotate" "$LOGROT_CONF" | awk '{print $2}'`)
+        CONFIG_ROTATE_ARRAY=("$LOGROTATE_COUNT" "$LOGROTATE_COUNT")
+        if [ "${CURRENT_ROTATE_ARRAY[*]}" != "${CONFIG_ROTATE_ARRAY[*]}" ]; then
+            cp -ap "$LOGROT_CONF" "$TEMP_CONF"
+            for INDEX in ${!CURRENT_ROTATE_ARRAY[*]}; do
+                sed -i "s%${CURRENT_ROTATE_ARRAY[$INDEX]}%${CONFIG_ROTATE_ARRAY[$INDEX]}%" "$TEMP_CONF"
+            done
+            TEMP_CONF_LEN=$(wc -l "$TEMP_CONF" | awk '{print $1}')
+            LOGROT_CONF_LEN=$(wc -l "$LOGROT_CONF" | awk '{print $1}')
+            if [ "$TEMP_CONF_LEN" == "$LOGROT_CONF_LEN" ]; then
+                mv "$TEMP_CONF" "$LOGROT_CONF"
+            fi
+        fi
+
+        # Run the log rotate command
+        logrotate -s "$LOGROT_STATE" "$LOGROT_CONF"
+
+        ;;
+
+    *)
+        ctdb_standard_event_handler "$@"
+        ;;
+esac
+
+exit

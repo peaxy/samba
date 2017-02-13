@@ -1149,6 +1149,16 @@ update_tickles ()
 	rm -f "$_my_connections" "$_my_tickles" 
 }
 
+######################################################
+# Debug Event Script Logger
+######################################################
+
+evt_logger() {
+    if [ "$CTDB_EVENT_DEBUG" = "yes" ]; then
+        echo `date +'%b %e %R '` "$@" >> ${CTDB_EVENT_LOGGING#$"file:"}
+    fi
+}
+
 ########################################################
 # load a site local config file
 ########################################################
