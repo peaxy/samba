@@ -57,7 +57,7 @@ case "$1" in
         fi
 
         # Run the log rotate command
-        logrotate -s "$LOGROT_STATE" "$LOGROT_CONF"
+        logrotate "$LOGROT_CONF"
 
         ;;
 
